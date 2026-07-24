@@ -1,0 +1,64 @@
+---
+title: "Authenticate with Arena Backend API"
+sidebarTitle: "Overview"
+description: "Arena Backend uses JWT RS256 bearer tokens. Learn how to register, log in, and pass tokens to every protected endpoint."
+---
+
+Arena Backend secures every protected endpoint with **JWT RS256 bearer tokens**. When you register and log in, the API issues a short-lived access token and a longer-lived refresh token. Include the access token in the `Authorization: Bearer <token>` header on every request that requires authentication.
+
+## Authentication Flow
+
+The diagram below shows the full lifecycle from account creation through token refresh.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as Arena API
+    C->>A: POST /api/auth/register
+    A-->>C: 201 Created
+    C->>A: POST /api/auth/login
+    A-->>C: { accessToken, refreshToken }
+    C->>A: GET /api/users/me (Authorization: Bearer <accessToken>)
+    A-->>C: User profile
+    C->>A: POST /api/auth/refresh (refreshToken expired)
+    A-->>C: { accessToken, refreshToken }
+```
+
+## Token Types
+
+Arena Backend issues two token types with distinct lifetimes and purposes. Keep both secure — treat them like passwords.
+
+| Token | Lifetime | Purpose |
+|---|---|---|
+| Access Token | 15 minutes | Authenticate individual API calls |
+| Refresh Token | 7 days | Obtain a new access token when the current one expires |
+
+## Passing Your Token
+
+Include your access token as a bearer credential in the `Authorization` header of every authenticated request.
+
+```http
+Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
+```
+
+If the header is missing, malformed, or the token has expired, the API returns a `401 Unauthorized` response immediately — no request body is processed.
+
+## Token Errors
+
+| HTTP Status | Meaning |
+|---|---|
+| `401 Unauthorized` | Token is missing, invalid, or expired — re-authenticate or refresh |
+| `403 Forbidden` | Token is valid, but your account role lacks permission for this action |
+
+---
+
+Ready to get started? Follow the guides below to create your account and manage your tokens.
+
+<CardGroup cols={2}>
+  <Card title="Registration" icon="user-plus" href="/auth/registration">
+    Create your Arena account and receive your first credentials.
+  </Card>
+  <Card title="JWT Tokens" icon="key" href="/auth/jwt-tokens">
+    Learn how to obtain, use, refresh, and revoke your JWT tokens.
+  </Card>
+</CardGroup>

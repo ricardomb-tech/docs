@@ -1,0 +1,438 @@
+---
+title: "Games API — Rooms, Joining, and Results"
+sidebarTitle: "Games"
+description: "Create competitive game rooms, join open matches, submit and confirm results, and manage the full real-money game lifecycle from stake lock to winnings distribution."
+---
+
+The Games API manages the full lifecycle of competitive game rooms — from creation and joining to result submission and winnings distribution. When you join a room your stake is locked in your wallet and released or redistributed once a result is confirmed.
+
+---
+
+## POST /api/games/rooms
+
+Create a new game room. The creator's stake is locked immediately upon creation. Other players can find and join the room until it reaches capacity or you delete it.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/games/rooms
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.  
+**Requirement:** KYC status must be `VERIFIED`.
+
+### Request Body
+
+<ParamField body="gameType" type="string" required>
+  Identifier for the game being played (e.g. `"FIFA_24"`, `"CHESS"`, `"WARZONE"`). Must match a supported game type on the platform.
+</ParamField>
+
+<ParamField body="stakeAmount" type="string" required>
+  The wager each player must pay to join, as a decimal string (e.g. `"10.00"`). You must have sufficient available balance.
+</ParamField>
+
+<ParamField body="currency" type="string" required>
+  ISO 4217 currency code. Currently only `"USD"` is supported.
+</ParamField>
+
+<ParamField body="isPrivate" type="boolean" required>
+  Set to `true` to create a private room accessible only via the `joinCode`. Set to `false` to list the room publicly.
+</ParamField>
+
+<ParamField body="requiresSupervision" type="boolean" required>
+  Set to `true` to require a supervisor to oversee the match and validate the result. Supervised matches attract a small commission deducted from winnings.
+</ParamField>
+
+### Response — 201 Created
+
+<ResponseField name="roomId" type="string">
+  Unique identifier for the game room (e.g. `room_01HROOM...`).
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Initial room status. Always `"WAITING"` after creation.
+</ResponseField>
+
+<ResponseField name="gameType" type="string">
+  The game type specified at creation.
+</ResponseField>
+
+<ResponseField name="stakeAmount" type="string">
+  Per-player stake amount as a decimal string.
+</ResponseField>
+
+<ResponseField name="creatorId" type="string">
+  User ID of the room creator.
+</ResponseField>
+
+<ResponseField name="joinCode" type="string">
+  A short alphanumeric code (e.g. `"ABC123"`) players can use to join via `/api/games/rooms/join-by-code`. Always present, even for public rooms.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp of room creation.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/games/rooms \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "gameType": "FIFA_24",
+    "stakeAmount": "10.00",
+    "currency": "USD",
+    "isPrivate": false,
+    "requiresSupervision": true
+  }'
+```
+
+```json
+{
+  "roomId": "room_01HROOM456XYZ",
+  "status": "WAITING",
+  "gameType": "FIFA_24",
+  "stakeAmount": "10.00",
+  "creatorId": "usr_01HXYZABCDEF123456",
+  "joinCode": "GTX991",
+  "createdAt": "2024-06-20T14:00:00Z"
+}
+```
+
+---
+
+## GET /api/games/rooms
+
+List game rooms with optional filtering by status and game type. Use this to discover open rooms to join.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/games/rooms
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Query Parameters
+
+<ParamField query="status" type="string">
+  Filter by room status. One of `WAITING`, `IN_PROGRESS`, or `COMPLETED`.
+</ParamField>
+
+<ParamField query="gameType" type="string">
+  Filter by game type (e.g. `"FIFA_24"`).
+</ParamField>
+
+<ParamField query="page" type="integer">
+  Zero-based page number. Defaults to `0`.
+</ParamField>
+
+<ParamField query="size" type="integer">
+  Records per page. Defaults to `20`.
+</ParamField>
+
+### Response — 200 OK
+
+Returns a paginated list of game room summary objects.
+
+### Example
+
+```bash
+curl "https://api.arena.gg/api/games/rooms?status=WAITING&gameType=FIFA_24&page=0&size=10" \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "content": [
+    {
+      "roomId": "room_01HROOM456XYZ",
+      "status": "WAITING",
+      "gameType": "FIFA_24",
+      "stakeAmount": "10.00",
+      "creatorId": "usr_01HXYZABCDEF123456",
+      "requiresSupervision": true,
+      "createdAt": "2024-06-20T14:00:00Z"
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1
+}
+```
+
+---
+
+## GET /api/games/rooms/{roomId}
+
+Retrieve full details for a specific game room, including the player list, current status, and supervisor assignment.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/games/rooms/{roomId}
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Path Parameters
+
+<ParamField path="roomId" type="string" required>
+  The unique ID of the game room.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="roomId" type="string">
+  Unique room identifier.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current room status (`WAITING`, `IN_PROGRESS`, `COMPLETED`, or `DISPUTED`).
+</ResponseField>
+
+<ResponseField name="gameType" type="string">
+  Game being played in this room.
+</ResponseField>
+
+<ResponseField name="stakeAmount" type="string">
+  Per-player stake as a decimal string.
+</ResponseField>
+
+<ResponseField name="players" type="array">
+  Array of player objects — each containing `userId` and `joinedAt`.
+</ResponseField>
+
+<ResponseField name="supervisorId" type="string">
+  User ID of the assigned supervisor. `null` if no supervisor has accepted the room yet.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 creation timestamp.
+</ResponseField>
+
+### Example
+
+```bash
+curl https://api.arena.gg/api/games/rooms/room_01HROOM456XYZ \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "roomId": "room_01HROOM456XYZ",
+  "status": "IN_PROGRESS",
+  "gameType": "FIFA_24",
+  "stakeAmount": "10.00",
+  "players": [
+    { "userId": "usr_01HXYZABCDEF123456", "joinedAt": "2024-06-20T14:00:00Z" },
+    { "userId": "usr_01HOPPONENT9999", "joinedAt": "2024-06-20T14:05:00Z" }
+  ],
+  "supervisorId": "usr_01HSUPERVISOR99",
+  "createdAt": "2024-06-20T14:00:00Z"
+}
+```
+
+---
+
+## POST /api/games/rooms/{roomId}/join
+
+Join an existing game room by its ID. Your stake is locked from your available wallet balance immediately. Once all required players have joined, the room transitions to `IN_PROGRESS`.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/games/rooms/{roomId}/join
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.  
+**Requirement:** KYC status must be `VERIFIED`.
+
+### Path Parameters
+
+<ParamField path="roomId" type="string" required>
+  The ID of the room you want to join.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="roomId" type="string">
+  The room you joined.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Updated room status. `"IN_PROGRESS"` once all players have joined.
+</ResponseField>
+
+<ResponseField name="players" type="array">
+  Updated array of players in the room.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `409 Conflict` | `ROOM_FULL` | The room already has the required number of players. |
+  | `409 Conflict` | `NOT_WAITING` | The room is no longer in `WAITING` status. |
+  | `402 Payment Required` | `INSUFFICIENT_BALANCE` | Your available balance is less than the room's `stakeAmount`. |
+  | `403 Forbidden` | `KYC_NOT_VERIFIED` | Your KYC status is not `VERIFIED`. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/games/rooms/room_01HROOM456XYZ/join \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "roomId": "room_01HROOM456XYZ",
+  "status": "IN_PROGRESS",
+  "players": [
+    { "userId": "usr_01HXYZABCDEF123456", "joinedAt": "2024-06-20T14:00:00Z" },
+    { "userId": "usr_01HOPPONENT9999", "joinedAt": "2024-06-20T14:05:00Z" }
+  ]
+}
+```
+
+---
+
+## POST /api/games/rooms/join-by-code
+
+Join a private or public game room using its short join code instead of the full room ID. Useful for sharing rooms with friends.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/games/rooms/join-by-code
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Request Body
+
+<ParamField body="joinCode" type="string" required>
+  The alphanumeric join code for the room (e.g. `"GTX991"`). Share this code with the player you want to invite.
+</ParamField>
+
+### Response — 200 OK
+
+Same response shape as `POST /api/games/rooms/{roomId}/join`.
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/games/rooms/join-by-code \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{ "joinCode": "GTX991" }'
+```
+
+```json
+{
+  "roomId": "room_01HROOM456XYZ",
+  "status": "IN_PROGRESS",
+  "players": [
+    { "userId": "usr_01HXYZABCDEF123456", "joinedAt": "2024-06-20T14:00:00Z" },
+    { "userId": "usr_01HOPPONENT9999", "joinedAt": "2024-06-20T14:05:00Z" }
+  ]
+}
+```
+
+---
+
+## POST /api/games/rooms/{roomId}/result
+
+Submit the match result for a completed game. Both players independently submit their view of the result. If both agree, the result is auto-confirmed. If they disagree, the room enters `DISPUTED` status for supervisor review.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/games/rooms/{roomId}/result
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required. You must be a player in this room.
+
+### Path Parameters
+
+<ParamField path="roomId" type="string" required>
+  The ID of the game room for which you are submitting a result.
+</ParamField>
+
+### Request Body
+
+<ParamField body="winnerId" type="string" required>
+  The user ID of the player you believe won the match (can be your own ID).
+</ParamField>
+
+<ParamField body="proof" type="string" required>
+  A URL to a screenshot, video, or a written description evidencing the result.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="roomId" type="string">
+  The room for which the result was submitted.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Updated room status.
+</ResponseField>
+
+<ResponseField name="resultStatus" type="string">
+  One of `PENDING_CONFIRMATION` (awaiting the other player's submission), `CONFIRMED` (both players agree), or `DISPUTED` (players submitted conflicting results).
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/games/rooms/room_01HROOM456XYZ/result \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "winnerId": "usr_01HXYZABCDEF123456",
+    "proof": "https://cdn.example.com/screenshots/match_result.png"
+  }'
+```
+
+```json
+{
+  "roomId": "room_01HROOM456XYZ",
+  "status": "IN_PROGRESS",
+  "resultStatus": "PENDING_CONFIRMATION"
+}
+```
+
+---
+
+## DELETE /api/games/rooms/{roomId}
+
+Cancel and delete a game room. You can only delete a room you created, and only while it is in `WAITING` status. Your locked stake is returned to your available balance immediately.
+
+**Method & Path**
+```
+DELETE https://api.arena.gg/api/games/rooms/{roomId}
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required. You must be the room creator.
+
+### Path Parameters
+
+<ParamField path="roomId" type="string" required>
+  The ID of the room to delete.
+</ParamField>
+
+### Response — 204 No Content
+
+An empty body confirms the room was deleted and your stake has been returned to your wallet.
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `403 Forbidden` | `NOT_CREATOR` | You did not create this room. |
+  | `409 Conflict` | `NOT_WAITING` | The room is already `IN_PROGRESS` or `COMPLETED` and cannot be deleted. |
+  | `404 Not Found` | `ROOM_NOT_FOUND` | No room with that ID exists. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X DELETE https://api.arena.gg/api/games/rooms/room_01HROOM456XYZ \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+A `204 No Content` response confirms deletion. Your stake of `stakeAmount` has been returned to your available balance.

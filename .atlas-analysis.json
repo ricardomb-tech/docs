@@ -1,23 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
+  "projectType": "api-service",
+  "projectName": "Arena Backend",
+  "projectDescription": "A real-money Skill Gaming platform API where players compete in private game rooms, supervisors monitor matches live, and a double-entry ledger wallet manages all financial transactions.",
   "theme": "sequoia",
-  "name": "Arena Backend",
-  "colors": {
-    "primary": "#ef7025",
-    "light": "#eec9bc",
-    "dark": "#4fa1ab"
-  },
-  "favicon": "/favicon.svg",
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/ricardomb-tech/arena-backend"
-    }
-  },
+  "primaryColor": "#ef7025",
+  "lightColor": "#eec9bc",
+  "darkColor": "#4fa1ab",
   "navigation": {
     "tabs": [
       {
@@ -116,9 +104,41 @@
       }
     ]
   },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/ricardomb-tech/arena-backend"
-    }
-  }
+  "keyFeatures": [
+    "JWT RS256 authentication and role-based authorization",
+    "Manual KYC identity verification workflow",
+    "Double-entry ledger wallet as the single source of truth for balances",
+    "Real-money deposits via PayPal Orders API v2 with webhook verification",
+    "Private skill game rooms with player competition",
+    "Live match supervision with sanction management",
+    "Supervisor commission system for supervised games",
+    "WebSocket/STOMP real-time communication for live game state",
+    "Redis Pub/Sub for multi-instance horizontal scaling",
+    "Event-driven domain architecture with Spring Modulith",
+    "Complaint and dispute resolution system",
+    "Prometheus & Grafana observability"
+  ],
+  "publicApiSurface": [
+    "POST /api/auth/register",
+    "POST /api/auth/login",
+    "POST /api/auth/refresh",
+    "GET /api/users/me",
+    "POST /api/kyc/submit",
+    "GET /api/wallet/balance",
+    "GET /api/wallet/transactions",
+    "POST /api/deposits/paypal/orders",
+    "POST /api/deposits/paypal/orders/{orderId}/capture",
+    "POST /api/deposits/paypal/webhook",
+    "POST /api/games/rooms",
+    "GET /api/games/rooms/{roomId}",
+    "POST /api/games/rooms/{roomId}/join",
+    "POST /api/games/rooms/{roomId}/start",
+    "POST /api/games/rooms/{roomId}/result",
+    "GET /api/supervision/games",
+    "POST /api/supervision/games/{gameId}/sanction",
+    "GET /api/supervision/commissions",
+    "POST /api/complaints",
+    "GET /api/complaints/{complaintId}",
+    "WS /ws/arena (STOMP endpoint)"
+  ]
 }

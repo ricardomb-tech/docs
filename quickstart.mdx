@@ -1,47 +1,153 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Arena Backend"
+sidebarTitle: "Quickstart"
+description: "Make your first authenticated API call, fund your wallet, and create a game room in a few simple steps with the Arena Backend platform."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+Arena Backend is the real-money Skill Gaming platform API that powers user authentication, wallet management, deposits, and competitive game rooms. By the end of this page you will have registered an account, obtained a JWT access token, made an authenticated request, funded your wallet via PayPal, and be ready to create your first game room.
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+<Note>
+  KYC (Know Your Customer) verification is required before you can participate
+  in real-money play. After registering, submit your identity documents through
+  the KYC flow so an agent can review and approve your account.
+</Note>
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Register an account">
+    Create a new player account by sending a `POST` request to `/api/auth/register`. Provide a unique username, a valid email address, and a secure password.
 
     ```bash
-    npm install your-package
+    curl -X POST https://api.arena.gg/api/auth/register \
+      -H "Content-Type: application/json" \
+      -d '{
+        "username": "player_one",
+        "email": "player@example.com",
+        "password": "S3cur3P@ssw0rd!"
+      }'
     ```
+
+    ```json
+    {
+      "username": "player_one",
+      "email": "player@example.com",
+      "password": "S3cur3P@ssw0rd!"
+    }
+    ```
+
+    A successful `201 Created` response confirms your account has been created. You can now log in and start exploring the platform.
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+
+  <Step title="Log in and obtain a JWT token">
+    Exchange your credentials for a short-lived access token and a long-lived refresh token by calling `POST /api/auth/login`.
 
     ```bash
-    your-cli init
+    curl -X POST https://api.arena.gg/api/auth/login \
+      -H "Content-Type: application/json" \
+      -d '{
+        "email": "player@example.com",
+        "password": "S3cur3P@ssw0rd!"
+      }'
     ```
+
+    **Response**
+
+    ```json
+    {
+      "accessToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "refreshToken": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4...",
+      "tokenType": "Bearer",
+      "expiresIn": 900
+    }
+    ```
+
+    Store the `accessToken` — you will attach it to every subsequent request. The `refreshToken` lets you obtain a new access token once the current one expires after 15 minutes. See [Authentication Overview](/auth/overview) for the full token lifecycle.
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+
+  <Step title="Make an authenticated request">
+    Include your access token in the `Authorization` header as a Bearer token. The example below fetches the currently authenticated user's profile.
 
     ```bash
-    your-cli start
+    curl https://api.arena.gg/api/users/me \
+      -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
     ```
+
+    **Response**
+
+    ```json
+    {
+      "id": "usr_01HXK2M3P4Q5R6S7T8U9V0W1X2",
+      "username": "player_one",
+      "email": "player@example.com",
+      "roles": ["PLAYER"],
+      "kycStatus": "PENDING",
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+    ```
+
+    Every protected endpoint expects this header. Requests without a valid token receive a `401 Unauthorized` response.
+  </Step>
+
+  <Step title="Fund your wallet">
+    Before you can enter a paid game room, you need a positive balance. Arena Backend integrates with the PayPal Orders API v2 to process deposits securely.
+
+    1. Initiate a deposit via `POST /api/payments/deposits/paypal`.
+    2. Redirect the user to the PayPal approval URL returned in the response.
+    3. After the user approves, PayPal calls your webhook and the balance is credited automatically.
+
+    See the [Wallet & Deposits guide](/wallet/deposits) for the complete deposit lifecycle, webhook verification, and minimum deposit amounts.
+  </Step>
+
+  <Step title="Create a game room">
+    With a funded wallet you are ready to compete. A game room defines the skill game, entry fee, and number of players. Once all participants have joined and accepted the terms, the match begins.
+
+    ```bash
+    curl -X POST https://api.arena.gg/api/gaming/rooms \
+      -H "Authorization: Bearer <your_access_token>" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "gameType": "CHESS",
+        "entryFee": "5.00",
+        "currency": "USD",
+        "maxPlayers": 2
+      }'
+    ```
+
+    **Response**
+
+    ```json
+    {
+      "roomId": "room_01HXK9A2B3C4D5E6F7G8H9I0J1",
+      "status": "WAITING_FOR_PLAYERS",
+      "gameType": "CHESS",
+      "entryFee": "5.00",
+      "currency": "USD",
+      "createdAt": "2024-01-15T11:00:00Z"
+    }
+    ```
+
+    For the full match lifecycle — including joining, result submission, and payout — see the [Game Lifecycle guide](/gaming/game-lifecycle).
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+---
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+## Explore further
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/auth/overview">
+    Learn about JWT RS256 tokens, the refresh flow, role-based access control,
+    and how to handle token expiry gracefully.
+  </Card>
+  <Card title="Wallet & Payments" icon="wallet" href="/wallet/overview">
+    Understand the double-entry ledger, balance queries, deposit and withdrawal
+    flows, and how funds move between players.
+  </Card>
+  <Card title="Game Lifecycle" icon="gamepad" href="/gaming/game-lifecycle">
+    Follow a match from room creation through result submission, dispute
+    handling, and prize payout.
+  </Card>
+  <Card title="Real-Time Events" icon="bolt" href="/realtime/websocket">
+    Subscribe to live match updates, wallet notifications, and room status
+    changes over WebSocket/STOMP.
+  </Card>
+</CardGroup>

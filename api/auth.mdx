@@ -1,0 +1,257 @@
+---
+title: "Authentication API — Register, Login, Refresh"
+sidebarTitle: "Auth"
+description: "Register accounts, validate credentials, and manage RS256-signed JWT access and refresh tokens. Covers register, login, token refresh, and logout endpoints."
+---
+
+The Auth API provides endpoints for account creation, credential validation, and token management. All tokens are RS256-signed JWTs. Access tokens expire after 15 minutes (`expiresIn: 900`); use the refresh endpoint to obtain a new pair without re-entering credentials.
+
+---
+
+## POST /api/auth/register
+
+Create a new Arena player account. On success the account is created with a `kycStatus` of `PENDING` — complete identity verification through the [KYC API](/api/kyc) before depositing or joining paid game rooms.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/auth/register
+```
+
+### Request Body
+
+<ParamField body="username" type="string" required>
+  Your chosen display name. Must be unique across all Arena accounts.
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  A valid email address. Must be unique across all Arena accounts.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Account password. Minimum 8 characters.
+</ParamField>
+
+### Response — 201 Created
+
+<ResponseField name="id" type="string">
+  Unique user identifier (e.g. `usr_01HXYZ...`).
+</ResponseField>
+
+<ResponseField name="username" type="string">
+  The username you registered with.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  The email address you registered with.
+</ResponseField>
+
+<ResponseField name="kycStatus" type="string">
+  Always `PENDING` on first registration. Submit documents via `/api/kyc/submit` to begin verification.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp of account creation.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `409 Conflict` | `EMAIL_TAKEN` | An account with that email already exists. |
+  | `409 Conflict` | `USERNAME_TAKEN` | An account with that username already exists. |
+  | `400 Bad Request` | `VALIDATION_ERROR` | One or more fields failed validation (e.g. password too short). |
+</Accordion>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "shadowstrike99",
+    "email": "player@example.com",
+    "password": "secureP@ssw0rd"
+  }'
+```
+
+```json
+{
+  "id": "usr_01HXYZABCDEF123456",
+  "username": "shadowstrike99",
+  "email": "player@example.com",
+  "kycStatus": "PENDING",
+  "createdAt": "2024-06-01T12:00:00Z"
+}
+```
+
+---
+
+## POST /api/auth/login
+
+Authenticate with your email and password to receive an access token and a refresh token.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/auth/login
+```
+
+### Request Body
+
+<ParamField body="email" type="string" required>
+  The email address associated with your account.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Your account password.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="accessToken" type="string">
+  A short-lived RS256-signed JWT. Include this in the `Authorization: Bearer` header on all protected requests.
+</ResponseField>
+
+<ResponseField name="refreshToken" type="string">
+  A long-lived opaque token used to obtain a new token pair without re-authenticating.
+</ResponseField>
+
+<ResponseField name="expiresIn" type="integer">
+  Seconds until the access token expires. Always `900` (15 minutes).
+</ResponseField>
+
+<ResponseField name="tokenType" type="string">
+  Always `"Bearer"`.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `401 Unauthorized` | `INVALID_CREDENTIALS` | Email or password is incorrect. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "player@example.com",
+    "password": "secureP@ssw0rd"
+  }'
+```
+
+```json
+{
+  "accessToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "dGhpc2lzYXJlZnJlc2h0b2tlbg==",
+  "expiresIn": 900,
+  "tokenType": "Bearer"
+}
+```
+
+---
+
+## POST /api/auth/refresh
+
+Exchange a valid refresh token for a new access token and refresh token pair.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/auth/refresh
+```
+
+<Warning>
+  Refresh tokens are **single-use**. After calling this endpoint, the token you sent is immediately revoked. Always persist the new `refreshToken` from the response before making any further requests.
+</Warning>
+
+### Request Body
+
+<ParamField body="refreshToken" type="string" required>
+  The refresh token received from `/api/auth/login` or a previous call to `/api/auth/refresh`.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="accessToken" type="string">
+  A new RS256-signed JWT access token.
+</ResponseField>
+
+<ResponseField name="refreshToken" type="string">
+  A new refresh token. The previously submitted token is now invalid.
+</ResponseField>
+
+<ResponseField name="expiresIn" type="integer">
+  Seconds until the new access token expires (`900`).
+</ResponseField>
+
+<ResponseField name="tokenType" type="string">
+  Always `"Bearer"`.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `401 Unauthorized` | `TOKEN_INVALID` | The refresh token is malformed or does not exist. |
+  | `401 Unauthorized` | `TOKEN_REVOKED` | The refresh token has already been used or was explicitly revoked by logout. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refreshToken": "dGhpc2lzYXJlZnJlc2h0b2tlbg=="
+  }'
+```
+
+```json
+{
+  "accessToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "bmV3cmVmcmVzaHRva2VuaGVyZQ==",
+  "expiresIn": 900,
+  "tokenType": "Bearer"
+}
+```
+
+---
+
+## POST /api/auth/logout
+
+Revoke the supplied refresh token, ending the session. The access token remains technically valid until its natural expiry — discard it client-side immediately after calling this endpoint.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/auth/logout
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Request Body
+
+<ParamField body="refreshToken" type="string" required>
+  The refresh token to revoke. After this call succeeds, the token cannot be used again.
+</ParamField>
+
+### Response — 204 No Content
+
+An empty body is returned on success. The provided refresh token is permanently revoked.
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+  | `400 Bad Request` | `VALIDATION_ERROR` | `refreshToken` field missing from request body. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/auth/logout \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refreshToken": "bmV3cmVmcmVzaHRva2VuaGVyZQ=="
+  }'
+```
+
+A `204 No Content` response confirms the token has been revoked. No response body is returned.

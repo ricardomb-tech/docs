@@ -1,0 +1,129 @@
+---
+title: "Managing JWT Access and Refresh Tokens"
+sidebarTitle: "JWT Tokens"
+description: "Learn how to obtain, use, refresh, and revoke RS256-signed JWT tokens throughout the full token lifecycle in the Arena Backend API."
+---
+
+Arena Backend issues **RS256-signed JWTs** for every authenticated session. Access tokens expire after 15 minutes; refresh tokens remain valid for 7 days. Understanding the full token lifecycle — obtaining, using, refreshing, and revoking — ensures your integration stays authenticated without interruption.
+
+## Obtaining Tokens
+
+Call `POST /api/auth/login` with your account credentials to receive both token types.
+
+```http
+POST https://api.arena.gg/api/auth/login
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "player@example.com",
+  "password": "SecurePass123!"
+}
+```
+
+A successful login returns:
+
+```json
+{
+  "accessToken": "eyJhbGciOiJSUzI1NiJ9...",
+  "refreshToken": "eyJhbGciOiJSUzI1NiJ9...",
+  "expiresIn": 900,
+  "tokenType": "Bearer"
+}
+```
+
+`expiresIn` is expressed in seconds — `900` equals 15 minutes. Schedule your refresh calls before this window closes to avoid interrupted requests.
+
+## Using Tokens
+
+Attach your access token to every protected request using the `Authorization` header.
+
+```bash
+curl -H "Authorization: Bearer eyJhbGciOiJSUzI1NiJ9..." \
+     https://api.arena.gg/api/users/me
+```
+
+The server validates the token's signature, issuer, and expiry on every request. No session cookie or API key is needed — the bearer token is the only credential required.
+
+## Refreshing Tokens
+
+When your access token expires, call `POST /api/auth/refresh` with your current refresh token to receive a new token pair.
+
+```http
+POST https://api.arena.gg/api/auth/refresh
+Content-Type: application/json
+```
+
+```json
+{
+  "refreshToken": "eyJhbGciOiJSUzI1NiJ9..."
+}
+```
+
+The response contains a brand-new access token and refresh token:
+
+```json
+{
+  "accessToken": "eyJhbGciOiJSUzI1NiJ9...",
+  "refreshToken": "eyJhbGciOiJSUzI1NiJ9...",
+  "expiresIn": 900,
+  "tokenType": "Bearer"
+}
+```
+
+<Warning>
+  Refresh tokens are **single-use**. Arena Backend rotates the refresh token on every `/api/auth/refresh` call — the token you submitted is immediately revoked. Always persist the new `refreshToken` from the response before making any further requests, or you will be locked out and forced to log in again.
+</Warning>
+
+## Logging Out
+
+Revoke a refresh token by calling `POST /api/auth/logout`. This invalidates the token server-side so it cannot be used to obtain new access tokens, even if it has not yet expired.
+
+```http
+POST https://api.arena.gg/api/auth/logout
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
+```
+
+```json
+{
+  "refreshToken": "eyJhbGciOiJSUzI1NiJ9..."
+}
+```
+
+A successful logout returns `204 No Content` with an empty body. If you have active sessions on multiple devices, you must call this endpoint once per refresh token to revoke each session individually.
+
+## Token Errors
+
+<AccordionGroup>
+  <Accordion title="401 TOKEN_EXPIRED — Access token has expired">
+    The access token's `exp` claim is in the past. Call `POST /api/auth/refresh` with your refresh token to obtain a new access token, then retry the original request.
+  </Accordion>
+
+  <Accordion title="401 TOKEN_INVALID — Malformed or tampered token">
+    The token could not be verified against the Arena Backend public key. This typically means the token was truncated, modified, or generated with a different signing key. Log in again to obtain a valid token pair.
+  </Accordion>
+
+  <Accordion title="401 TOKEN_REVOKED — Refresh token already revoked">
+    The refresh token was previously used or explicitly revoked via `/api/auth/logout`. You must log in with your email and password to start a new session.
+  </Accordion>
+
+  <Accordion title="403 INSUFFICIENT_ROLE — Authenticated but not authorized">
+    Your token is valid, but the `role` claim in the JWT payload does not meet the permission requirement for the requested endpoint. Contact the Arena team if you believe your role should grant access.
+  </Accordion>
+</AccordionGroup>
+
+## Token Claims
+
+Every JWT issued by Arena Backend contains the following standard and custom claims in its payload.
+
+| Claim | Type | Description |
+|---|---|---|
+| `sub` | `string` | The authenticated user's unique ID (e.g. `usr_01J8X...`) |
+| `email` | `string` | The user's registered email address |
+| `role` | `string` | Account role: `PLAYER`, `SUPERVISOR`, or `ADMIN` |
+| `iat` | `number` | Unix timestamp — when the token was issued |
+| `exp` | `number` | Unix timestamp — when the token expires |
+
+You can decode any JWT locally (e.g. with [jwt.io](https://jwt.io)) to inspect these claims without making an API call. Never trust client-decoded claims for authorization decisions — always let the server validate the signature.

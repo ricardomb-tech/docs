@@ -1,0 +1,100 @@
+---
+title: "PayPal Webhook Verification and Processing"
+sidebarTitle: "Webhooks"
+description: "Arena verifies every PayPal webhook with HMAC-SHA256 before crediting wallets. Learn the supported events, verification steps, and idempotency guarantees."
+---
+
+PayPal sends signed webhook events to confirm payments and notify you of status changes. Arena Backend verifies each event using HMAC-SHA256 signature verification before making any changes to the wallet ledger. This page explains the webhook flow, the events you should handle, and how Arena ensures that duplicate events never produce duplicate wallet credits.
+
+## Webhook Endpoint
+
+Arena exposes a dedicated endpoint that PayPal calls directly. You do not call this endpoint yourself.
+
+```
+POST /api/deposits/paypal/webhook
+```
+
+This endpoint must be **publicly accessible** from the internet. Register this URL in your PayPal app settings under **Webhooks** in the [PayPal Developer Dashboard](https://developer.paypal.com/dashboard/). PayPal will POST signed events to this URL whenever a relevant payment event occurs.
+
+## Supported Webhook Events
+
+Arena processes the following PayPal event types. Any other event types received are acknowledged with a `200 OK` but produce no wallet action.
+
+| Event Type | Trigger | Wallet Action |
+|---|---|---|
+| `PAYMENT.CAPTURE.COMPLETED` | Payment captured successfully | Wallet credited with deposit amount |
+| `PAYMENT.CAPTURE.DENIED` | PayPal declined the payment during capture | Deposit marked `FAILED`; no wallet change |
+| `PAYMENT.CAPTURE.REVERSED` | A previously completed capture was reversed | Wallet debited to reverse the credit |
+| `CHECKOUT.ORDER.APPROVED` | Player approved the order on PayPal | Informational only; no wallet action |
+
+## Webhook Verification Process
+
+Arena reconstructs and compares the PayPal signature on every incoming webhook before trusting its contents. The steps below describe exactly what happens when a webhook arrives.
+
+<Steps>
+  <Step title="Receive the webhook POST from PayPal">
+    PayPal sends a `POST` request to `/api/deposits/paypal/webhook` with the event payload in the body and the following headers:
+
+    | Header | Description |
+    |---|---|
+    | `PAYPAL-TRANSMISSION-ID` | Unique ID for this webhook delivery attempt |
+    | `PAYPAL-TRANSMISSION-TIME` | ISO 8601 timestamp of when PayPal sent the event |
+    | `PAYPAL-TRANSMISSION-SIG` | Base64-encoded HMAC-SHA256 signature to verify |
+    | `PAYPAL-CERT-URL` | URL to retrieve PayPal's public certificate |
+  </Step>
+  <Step title="Reconstruct the expected signature">
+    Arena builds the signature input string by concatenating the configured webhook ID, the transmission ID, the transmission time, and the raw request body — then computes an HMAC-SHA256 digest:
+
+    ```
+    HMAC-SHA256(webhookId + transmissionId + transmissionTime + rawBody)
+    ```
+
+    The result is Base64-encoded and compared against the `PAYPAL-TRANSMISSION-SIG` header value.
+  </Step>
+  <Step title="Compare signatures">
+    Arena performs a constant-time comparison of the reconstructed signature against `PAYPAL-TRANSMISSION-SIG`. A constant-time comparison prevents timing attacks that could otherwise allow an attacker to forge a valid signature.
+  </Step>
+  <Step title="Accept or reject the event">
+    - **Signatures match**: Arena processes the event and returns `200 OK`
+    - **Signatures do not match**: Arena returns `400 Bad Request` and discards the event without making any wallet changes
+  </Step>
+</Steps>
+
+## Idempotency
+
+PayPal may deliver the same webhook event more than once — for example, if your endpoint was temporarily unavailable and PayPal retried. Arena uses the `PAYPAL-TRANSMISSION-ID` header as an idempotency key. If an event with a previously seen transmission ID arrives, Arena acknowledges it with `200 OK` but skips all wallet operations, ensuring no duplicate credits or debits are applied.
+
+<Note>
+  The wallet credit triggered by `PAYMENT.CAPTURE.COMPLETED` is the **authoritative** credit event. Even if the capture API call already returned `COMPLETED` in its response body, the ledger entry is not finalized until the webhook is received, verified, and processed. Design your UI to account for this short delay.
+</Note>
+
+## Webhook Payload Example
+
+The following is a representative `PAYMENT.CAPTURE.COMPLETED` payload that Arena receives from PayPal:
+
+```json
+{
+  "id": "WH-2WR32451HC0233532-67976317FL4543714",
+  "event_type": "PAYMENT.CAPTURE.COMPLETED",
+  "resource": {
+    "id": "8MF10533XA626831P",
+    "amount": {
+      "value": "25.00",
+      "currency_code": "USD"
+    },
+    "status": "COMPLETED"
+  }
+}
+```
+
+| Field | Description |
+|---|---|
+| `id` | Unique webhook event ID (distinct from the transmission ID) |
+| `event_type` | The type of event that triggered this webhook |
+| `resource.id` | The PayPal capture ID for this payment |
+| `resource.amount.value` | The captured amount as a decimal string |
+| `resource.status` | Capture status as confirmed by PayPal |
+
+<Warning>
+  If your webhook endpoint is unreachable — for example, due to downtime or a misconfigured firewall rule — PayPal will retry delivery for **up to 72 hours** using an exponential back-off schedule. If all retries are exhausted, the webhook is abandoned. Ensure your endpoint is highly available and monitor for failed deliveries in the PayPal Developer Dashboard.
+</Warning>

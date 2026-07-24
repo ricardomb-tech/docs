@@ -1,0 +1,231 @@
+---
+title: "KYC API — Identity Verification Endpoints"
+sidebarTitle: "KYC"
+description: "Submit identity documents for verification, poll your current KYC status, and resubmit after a rejection. Required before depositing funds or joining paid game rooms."
+---
+
+The KYC API manages identity verification. Submit your documents, poll for status, and resubmit if your application is rejected. A `VERIFIED` status is required before you can deposit funds or join real-money game rooms on Arena.
+
+---
+
+## POST /api/kyc/submit
+
+Upload your identity documents to begin the KYC verification process. Submissions are reviewed by the Arena compliance team, typically within 1–2 business days.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/kyc/submit
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.  
+**Content-Type:** `multipart/form-data`
+
+### Request Fields
+
+<ParamField body="fullName" type="string" required>
+  Your full legal name exactly as it appears on your identity document.
+</ParamField>
+
+<ParamField body="dateOfBirth" type="string" required>
+  Your date of birth in `YYYY-MM-DD` format (e.g. `1990-04-15`).
+</ParamField>
+
+<ParamField body="documentType" type="string" required>
+  Type of identity document you are submitting. One of `PASSPORT`, `NATIONAL_ID`, or `DRIVER_LICENSE`.
+</ParamField>
+
+<ParamField body="documentNumber" type="string" required>
+  The unique identifier printed on your document (e.g. passport number, licence number).
+</ParamField>
+
+<ParamField body="documentFront" type="file" required>
+  A clear image or scan of the front of your document. Accepted formats: JPEG, PNG, PDF (max 10 MB).
+</ParamField>
+
+<ParamField body="documentBack" type="file">
+  A clear image or scan of the back of your document. Required for `NATIONAL_ID` and `DRIVER_LICENSE`. Not required for `PASSPORT`.
+</ParamField>
+
+### Response — 202 Accepted
+
+<ResponseField name="kycSubmissionId" type="string">
+  Unique identifier for this submission (e.g. `kyc_01HXYZ...`).
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Always `"SUBMITTED"` immediately after a successful submission.
+</ResponseField>
+
+<ResponseField name="submittedAt" type="string">
+  ISO 8601 timestamp of when the submission was received.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `400 Bad Request` | `MISSING_FIELDS` | One or more required fields were not included. |
+  | `400 Bad Request` | `INVALID_FILE_TYPE` | A file was uploaded in an unsupported format. |
+  | `409 Conflict` | `ALREADY_VERIFIED` | Your account already has a `VERIFIED` KYC status. No new submission is needed. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/kyc/submit \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -F "fullName=Jane Doe" \
+  -F "dateOfBirth=1990-04-15" \
+  -F "documentType=PASSPORT" \
+  -F "documentNumber=X12345678" \
+  -F "documentFront=@/path/to/passport_front.jpg"
+```
+
+```json
+{
+  "kycSubmissionId": "kyc_01HXYZABCDEF123456",
+  "status": "SUBMITTED",
+  "submittedAt": "2024-06-01T13:00:00Z"
+}
+```
+
+---
+
+## GET /api/kyc/status
+
+Check the current status of your identity verification and retrieve any rejection reason if your submission was declined.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/kyc/status
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Response — 200 OK
+
+<ResponseField name="status" type="string">
+  Your current KYC status. See the table below for possible values.
+</ResponseField>
+
+<ResponseField name="submittedAt" type="string">
+  ISO 8601 timestamp of your most recent submission. `null` if no submission has been made.
+</ResponseField>
+
+<ResponseField name="reviewedAt" type="string">
+  ISO 8601 timestamp of when your submission was reviewed. `null` if not yet reviewed.
+</ResponseField>
+
+<ResponseField name="rejectionReason" type="string">
+  Human-readable explanation of why your submission was rejected. `null` unless `status` is `REJECTED`.
+</ResponseField>
+
+<Tip>
+  Poll this endpoint after submitting documents to know when you can start depositing and playing.
+</Tip>
+
+### Status Values
+
+| Status | Meaning |
+|--------|---------|
+| `PENDING` | No documents submitted yet. |
+| `SUBMITTED` | Documents received and awaiting review. |
+| `VERIFIED` | Identity confirmed. You can deposit and join paid rooms. |
+| `REJECTED` | Submission declined. Check `rejectionReason` and resubmit via `/api/kyc/resubmit`. |
+
+### Example
+
+```bash
+curl https://api.arena.gg/api/kyc/status \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "status": "REJECTED",
+  "submittedAt": "2024-06-01T13:00:00Z",
+  "reviewedAt": "2024-06-02T09:15:00Z",
+  "rejectionReason": "Document image is blurry and unreadable. Please resubmit a clearer scan."
+}
+```
+
+---
+
+## POST /api/kyc/resubmit
+
+Resubmit your identity documents after a rejection. This endpoint is only available when your current `kycStatus` is `REJECTED`. The accepted fields are identical to `/api/kyc/submit`.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/kyc/resubmit
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.  
+**Content-Type:** `multipart/form-data`
+
+<Warning>
+  You can only call this endpoint when your KYC status is `REJECTED`. Calling it while `PENDING`, `SUBMITTED`, or `VERIFIED` will return a `409 Conflict` error.
+</Warning>
+
+### Request Fields
+
+<ParamField body="fullName" type="string" required>
+  Your full legal name exactly as it appears on your identity document.
+</ParamField>
+
+<ParamField body="dateOfBirth" type="string" required>
+  Your date of birth in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="documentType" type="string" required>
+  One of `PASSPORT`, `NATIONAL_ID`, or `DRIVER_LICENSE`.
+</ParamField>
+
+<ParamField body="documentNumber" type="string" required>
+  The unique identifier printed on your identity document.
+</ParamField>
+
+<ParamField body="documentFront" type="file" required>
+  A clear image or scan of the front of your document (JPEG, PNG, or PDF, max 10 MB).
+</ParamField>
+
+<ParamField body="documentBack" type="file">
+  A clear image or scan of the back of your document. Required for `NATIONAL_ID` and `DRIVER_LICENSE`.
+</ParamField>
+
+### Response — 202 Accepted
+
+<ResponseField name="kycSubmissionId" type="string">
+  Unique identifier for the new resubmission.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Always `"SUBMITTED"` on a successful resubmission.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `400 Bad Request` | `MISSING_FIELDS` | One or more required fields were not included. |
+  | `409 Conflict` | `NOT_REJECTED` | Your KYC status is not currently `REJECTED`. Use `/api/kyc/submit` for a first submission. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/kyc/resubmit \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -F "fullName=Jane Doe" \
+  -F "dateOfBirth=1990-04-15" \
+  -F "documentType=PASSPORT" \
+  -F "documentNumber=X12345678" \
+  -F "documentFront=@/path/to/passport_front_clear.jpg"
+```
+
+```json
+{
+  "kycSubmissionId": "kyc_01HABC999XYZ",
+  "status": "SUBMITTED"
+}
+```

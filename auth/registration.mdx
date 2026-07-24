@@ -1,0 +1,89 @@
+---
+title: "Register and Create Your Arena Account"
+sidebarTitle: "Registration"
+description: "Create an Arena account by providing a username, email, and password. Learn the required fields and what happens immediately after registration."
+---
+
+Registering creates a new **player account** on the Arena platform. Once registered, you can log in to receive your JWT credentials and begin the identity verification (KYC) process required for real-money play. The entire flow takes only a few API calls to complete.
+
+<Note>
+  All new accounts start with `kycStatus: PENDING`. You must complete KYC verification before you can deposit funds or join real-money game rooms. See [Identity Verification (KYC)](/auth/kyc) for details.
+</Note>
+
+## Creating Your Account
+
+<Steps>
+  <Step title="Send registration request">
+    Make a `POST` request to `/api/auth/register` with your chosen username, a valid email address, and a strong password.
+
+    ```http
+    POST https://api.arena.gg/api/auth/register
+    Content-Type: application/json
+    ```
+
+    ```json
+    {
+      "username": "player_one",
+      "email": "player@example.com",
+      "password": "SecurePass123!"
+    }
+    ```
+
+    A successful request returns `201 Created` with your new account details.
+
+    ```json
+    {
+      "id": "usr_01J8X...",
+      "username": "player_one",
+      "email": "player@example.com",
+      "kycStatus": "PENDING",
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+    ```
+  </Step>
+
+  <Step title="Log in">
+    Exchange your email and password for an access token and a refresh token by calling `POST /api/auth/login`.
+
+    ```http
+    POST https://api.arena.gg/api/auth/login
+    Content-Type: application/json
+    ```
+
+    ```json
+    {
+      "email": "player@example.com",
+      "password": "SecurePass123!"
+    }
+    ```
+
+    The response contains your `accessToken` and `refreshToken`. Store these securely — you'll attach the access token to every subsequent authenticated request. See [Managing JWT Tokens](/auth/jwt-tokens) for the complete token lifecycle.
+  </Step>
+
+  <Step title="Complete KYC">
+    Your account is active immediately after registration, but real-money features remain locked until your identity is verified. Follow the [Identity Verification (KYC)](/auth/kyc) guide to submit your documents and unlock full platform access.
+  </Step>
+</Steps>
+
+## Password Requirements
+
+Your password must satisfy all of the following rules before the API accepts the registration request.
+
+- **Minimum length** — at least 8 characters
+- **Uppercase letter** — at least one uppercase character (A–Z)
+- **Digit** — at least one numeric character (0–9)
+- **Special character** — at least one symbol, for example `!`, `@`, `#`, `$`, `%`
+
+Passwords that do not meet these requirements return a `422 Unprocessable Entity` response with a descriptive `errors` array.
+
+## Account Roles
+
+Every Arena account is assigned a role that controls what actions it can perform. Your role is embedded in the JWT payload and evaluated server-side on every request.
+
+| Role | Description |
+|---|---|
+| `PLAYER` | Default role assigned at registration. Can create game rooms, join matches, and manage their own wallet. |
+| `SUPERVISOR` | Can monitor active matches and earn commission on supervised games. Assigned by platform administrators. |
+| `ADMIN` | Full platform management access, including user administration and configuration. Assigned internally. |
+
+You cannot self-assign the `SUPERVISOR` or `ADMIN` roles — contact the Arena team if your use case requires elevated permissions.

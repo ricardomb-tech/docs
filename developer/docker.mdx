@@ -1,0 +1,96 @@
+---
+title: "Docker and Docker Compose Deployment"
+sidebarTitle: "Docker"
+description: "Run Arena Backend with Docker Compose for local development or production-like environments, including service commands, health checks, and image builds."
+---
+
+Arena Backend ships with a Docker Compose configuration that starts the full stack: the API server, PostgreSQL, and Redis. This is the fastest way to get a complete, production-like environment running on your machine without manually installing or configuring any backing services.
+
+## Quick Start
+
+Start all services in detached mode with a single command:
+
+```bash
+docker compose up -d
+```
+
+Docker Compose will pull any missing images, build the application image if needed, and start all three services. The first startup will take slightly longer as Flyway runs the database migrations automatically.
+
+The following services are included in the Compose file:
+
+| Service | Description | Port |
+|---|---|---|
+| `arena-api` | The Spring Boot application server | `8080` |
+| `postgres` | PostgreSQL 15 relational database | `5432` |
+| `redis` | Redis 7 in-memory store for caching and Pub/Sub | `6379` |
+
+Once all services are healthy, the API is reachable at `http://localhost:8080`.
+
+## Service Commands
+
+Use these commands to manage individual services or the full stack:
+
+| Action | Command |
+|---|---|
+| Start all services | `docker compose up -d` |
+| Start infrastructure only | `docker compose up -d postgres redis` |
+| View live logs for the API | `docker compose logs -f arena-api` |
+| View logs for all services | `docker compose logs -f` |
+| Stop all services | `docker compose down` |
+| Rebuild and restart | `docker compose up -d --build` |
+| Reset database (destroys data) | `docker compose down -v && docker compose up -d` |
+| Check service status | `docker compose ps` |
+
+Start infrastructure only (`postgres` and `redis`) when you want to run the application with `mvn spring-boot:run` for faster code-reload cycles during active development.
+
+## Building the Application Image
+
+To produce a standalone production image without using Compose, run the Docker build directly from the project root:
+
+```bash
+docker build -t arena-backend:latest .
+```
+
+The `Dockerfile` uses a multi-stage build: the first stage compiles and packages the application with Maven, and the second stage copies only the resulting JAR into a minimal JRE image to keep the final image small.
+
+Tag and push to your container registry before deploying:
+
+```bash
+docker tag arena-backend:latest your-registry.io/arena-backend:1.0.0
+docker push your-registry.io/arena-backend:1.0.0
+```
+
+## Environment Variables at Runtime
+
+When running via Docker Compose, environment variables are loaded from your `.env` file automatically. For standalone container runs, pass variables with `--env-file` or `-e`:
+
+```bash
+docker run --env-file .env -p 8080:8080 arena-backend:latest
+```
+
+See the [Environment Variables](/developer/environment-variables) reference for the full list of required and optional variables.
+
+## Health Checks
+
+Every service in the Compose file defines a health check. Docker polls these checks and marks each container as `healthy` or `unhealthy`. View the current health status:
+
+```bash
+docker compose ps
+```
+
+The `arena-api` service is considered healthy when the Spring Boot Actuator endpoint returns a successful response:
+
+```bash
+curl http://localhost:8080/actuator/health
+# {"status":"UP"}
+```
+
+The `postgres` service uses `pg_isready`, and `redis` uses `redis-cli ping`. The `arena-api` container will not start until both `postgres` and `redis` report healthy, preventing startup failures caused by unavailable dependencies.
+
+<Tip>
+  Run `docker compose logs -f` during development to watch logs from all services in real time in a single terminal window. Prefix with a service name — e.g. `docker compose logs -f arena-api` — to filter to just the application output and reduce noise.
+</Tip>
+
+<Note>
+  The first time you start the stack, Flyway runs all pending database migrations automatically during the `arena-api` container startup. You do not need to run `mvn flyway:migrate` manually when using Docker Compose. Subsequent starts only apply new migrations, so your data is preserved between restarts unless you reset with `docker compose down -v`.
+</Note>

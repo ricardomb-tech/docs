@@ -1,0 +1,84 @@
+---
+title: "Arena Backend Environment Variable Reference"
+sidebarTitle: "Env Variables"
+description: "Complete reference for all required and optional environment variables used to configure Arena Backend across local, staging, and production environments."
+---
+
+Arena Backend is configured entirely through environment variables. Copy `.env.example` to `.env` and fill in the required values before starting the application. Every variable listed here maps directly to a Spring Boot configuration property — no code changes are needed to reconfigure the application for a new environment.
+
+## Required Variables
+
+The application will fail to start if any of the following variables are missing or invalid.
+
+| Variable | Description | Example |
+|---|---|---|
+| `SPRING_DATASOURCE_URL` | PostgreSQL JDBC connection URL | `jdbc:postgresql://localhost:5432/arena` |
+| `SPRING_DATASOURCE_USERNAME` | Database username | `arena_user` |
+| `SPRING_DATASOURCE_PASSWORD` | Database password | `secret` |
+| `JWT_PRIVATE_KEY_PATH` | Path to the RS256 private key PEM file used to sign JWTs | `classpath:keys/private.pem` |
+| `JWT_PUBLIC_KEY_PATH` | Path to the RS256 public key PEM file used to verify JWTs | `classpath:keys/public.pem` |
+| `PAYPAL_CLIENT_ID` | PayPal application client ID from the PayPal Developer Dashboard | `AaBbCcDdEe...` |
+| `PAYPAL_CLIENT_SECRET` | PayPal application client secret | `EeFfGgHh...` |
+| `PAYPAL_WEBHOOK_ID` | PayPal webhook ID used to verify incoming webhook signatures | `12345678ABC` |
+| `REDIS_HOST` | Hostname or IP address of the Redis instance | `localhost` |
+| `REDIS_PORT` | TCP port Redis is listening on | `6379` |
+
+## Optional Variables
+
+These variables have sensible defaults and only need to be set when you want to override the default behaviour.
+
+| Variable | Description | Default |
+|---|---|---|
+| `PAYPAL_MODE` | PayPal environment — `sandbox` for testing, `live` for production | `sandbox` |
+| `JWT_ACCESS_TOKEN_EXPIRY` | Access token lifetime in seconds | `900` (15 min) |
+| `JWT_REFRESH_TOKEN_EXPIRY` | Refresh token lifetime in seconds | `604800` (7 days) |
+| `APP_BASE_URL` | Base URL used to construct PayPal return/cancel URLs | `http://localhost:8080` |
+| `MANAGEMENT_ENDPOINTS_ENABLED` | Enable Spring Actuator management endpoints | `true` |
+
+## Generating RS256 Keys
+
+Arena Backend signs and verifies JWTs using an RS256 key pair. You need to generate this pair once and reference the files via `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH`.
+
+<Note>
+  Run the following commands to generate a 2048-bit RSA key pair. Place the resulting files in `src/main/resources/keys/` (already included in `.gitignore`) and reference them with the `classpath:` prefix.
+
+  ```bash
+  openssl genrsa -out private.pem 2048
+  openssl rsa -in private.pem -pubout -out public.pem
+  ```
+
+  In production, store the key files in a secrets manager (e.g. AWS Secrets Manager, HashiCorp Vault) and inject them as environment variables or mounted volumes rather than bundling them in the image.
+</Note>
+
+## Example `.env` File
+
+```bash
+# Database
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/arena
+SPRING_DATASOURCE_USERNAME=arena_user
+SPRING_DATASOURCE_PASSWORD=secret
+
+# JWT
+JWT_PRIVATE_KEY_PATH=classpath:keys/private.pem
+JWT_PUBLIC_KEY_PATH=classpath:keys/public.pem
+JWT_ACCESS_TOKEN_EXPIRY=900
+JWT_REFRESH_TOKEN_EXPIRY=604800
+
+# PayPal
+PAYPAL_CLIENT_ID=AaBbCcDdEe...
+PAYPAL_CLIENT_SECRET=EeFfGgHh...
+PAYPAL_WEBHOOK_ID=12345678ABC
+PAYPAL_MODE=sandbox
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# Application
+APP_BASE_URL=http://localhost:8080
+MANAGEMENT_ENDPOINTS_ENABLED=true
+```
+
+<Warning>
+  Never commit your `.env` file to version control. It contains secrets that would compromise your database, payment integration, and JWT signing key if exposed. Only `.env.example` — which contains placeholder values and no real secrets — should be tracked in Git. Add `.env` to your `.gitignore` if it isn't already.
+</Warning>

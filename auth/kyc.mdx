@@ -1,0 +1,111 @@
+---
+title: "Identity Verification (KYC) for Arena Gaming"
+sidebarTitle: "KYC"
+description: "Complete KYC identity verification before making real-money deposits or joining paid game rooms. Learn what to submit and what to expect."
+---
+
+**KYC (Know Your Customer)** is a regulatory requirement that Arena enforces before allowing real-money activity on the platform. Until your identity is verified, you can explore the platform but cannot deposit funds, join paid game rooms, or withdraw winnings. This page walks you through exactly what to submit and what happens at each stage of review.
+
+<Warning>
+  KYC documents are reviewed by a **human operator**. Automated approvals are not supported. Plan for a review window of 1–2 business days after submission before your status updates.
+</Warning>
+
+## KYC Status Values
+
+Your account's `kycStatus` field reflects where you are in the verification process. You can retrieve your current status at any time by calling `GET /api/kyc/status`.
+
+| Status | Meaning |
+|---|---|
+| `PENDING` | Account created, KYC documents not yet submitted |
+| `SUBMITTED` | Documents uploaded and awaiting human review |
+| `VERIFIED` | Identity confirmed — full platform access granted |
+| `REJECTED` | Submitted documents were not accepted; resubmission required |
+
+## Submitting KYC
+
+<Steps>
+  <Step title="Upload your identity documents">
+    Send a `POST` request to `/api/kyc/submit` as `multipart/form-data`. Include all required fields — missing fields return a `422 Unprocessable Entity` error.
+
+    ```http
+    POST https://api.arena.gg/api/kyc/submit
+    Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
+    Content-Type: multipart/form-data
+    ```
+
+    | Field | Type | Description |
+    |---|---|---|
+    | `fullName` | `string` | Your legal full name as it appears on the document |
+    | `dateOfBirth` | `string` | Date of birth in `YYYY-MM-DD` format |
+    | `documentType` | `string` | One of: `PASSPORT`, `NATIONAL_ID`, `DRIVER_LICENSE` |
+    | `documentNumber` | `string` | The unique identifier printed on your document |
+    | `documentFront` | `file` | Image of the front of your document (JPEG or PNG) |
+    | `documentBack` | `file` | Image of the back of your document (required for `NATIONAL_ID` and `DRIVER_LICENSE`) |
+
+    <Tip>
+      Ensure all document images are **clear, well-lit, and fully legible** — every piece of text, including expiry dates and document numbers, must be readable. Blurry, cropped, or dark images are the most common cause of rejection.
+    </Tip>
+  </Step>
+
+  <Step title="Receive confirmation">
+    A successful submission returns `200 OK` with a submission receipt. Record the `kycSubmissionId` for reference.
+
+    ```json
+    {
+      "kycSubmissionId": "kyc_01J9A...",
+      "status": "SUBMITTED",
+      "submittedAt": "2024-01-15T11:00:00Z"
+    }
+    ```
+
+    Your account's `kycStatus` immediately updates to `SUBMITTED`. You will not be able to resubmit while a review is in progress.
+  </Step>
+
+  <Step title="Wait for review">
+    An Arena operator reviews your documents manually. This process typically takes **1–2 business days**. You will receive an email notification when your review is complete.
+  </Step>
+
+  <Step title="Check your verification status">
+    Poll `GET /api/kyc/status` at any time to see your current status.
+
+    ```http
+    GET https://api.arena.gg/api/kyc/status
+    Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
+    ```
+
+    ```json
+    {
+      "status": "VERIFIED",
+      "verifiedAt": "2024-01-16T09:15:00Z"
+    }
+    ```
+
+    Once the status is `VERIFIED`, all real-money features are immediately unlocked.
+  </Step>
+</Steps>
+
+## What Happens After Verification
+
+When your `kycStatus` reaches `VERIFIED`, the following platform capabilities are activated automatically — no additional API calls are needed.
+
+- **Deposit limits enabled** — you can fund your Arena wallet up to your account's configured deposit limit
+- **Real-money game rooms** — you can create and join paid game rooms with entry fees
+- **Wallet withdrawals** — you can request withdrawals of your winnings to your registered payment method
+
+## Resubmission After Rejection
+
+If your status is `REJECTED`, inspect the `rejectionReason` field returned by `GET /api/kyc/status` to understand exactly why your documents were not accepted.
+
+```json
+{
+  "status": "REJECTED",
+  "rejectionReason": "Document image is blurry and the document number is not legible.",
+  "rejectedAt": "2024-01-16T08:45:00Z"
+}
+```
+
+Address the issue described in `rejectionReason` — for example, retake the photo with better lighting — then call `POST /api/kyc/submit` again with the corrected documents. Each resubmission starts a new review cycle of 1–2 business days.
+
+<Note>
+  There is no limit on the number of resubmission attempts. However, repeated submissions of low-quality documents may result in a manual review delay. Resolve the stated reason before resubmitting.
+</Note>

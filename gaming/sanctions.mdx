@@ -1,0 +1,150 @@
+---
+title: "Player Sanctions, Enforcement Actions, and Appeals"
+sidebarTitle: "Sanctions"
+description: "Supervisors apply sanctions to players who violate game rules. Learn about sanction types, how to apply and appeal them, and the effect on gameplay."
+---
+
+Supervisors can apply sanctions to players who violate game rules during a supervised match. Sanctions range from informal warnings to permanent removal from competitive play and are recorded in the platform's audit trail. Understanding each sanction type — and the evidence threshold required — ensures you apply enforcement actions fairly and consistently.
+
+## Sanction Types
+
+Choose the sanction that is proportional to the severity of the violation.
+
+| Sanction type    | Gameplay restriction                                              |
+| ---------------- | ----------------------------------------------------------------- |
+| `WARNING`        | Formal warning issued to the player. No gameplay restriction applied. |
+| `GAME_FORFEIT`   | Current game is forfeited. The opponent is declared winner automatically. |
+| `TEMPORARY_BAN`  | Player is banned from creating or joining game rooms for a set duration. |
+| `PERMANENT_BAN`  | Player is permanently removed from competitive play on the platform. |
+
+<Warning>
+  `GAME_FORFEIT` and `TEMPORARY_BAN` sanctions **cannot be undone** once
+  applied. Ensure you have reviewed all available evidence — screenshots,
+  result submissions, and WebSocket event logs — before applying either of
+  these sanctions.
+</Warning>
+
+## Applying a Sanction
+
+Only supervisors actively overseeing a game room can apply a sanction to players in that room. Send a `POST` request to the sanction endpoint with the target user, sanction type, reason, and any supporting evidence.
+
+```bash
+POST https://api.arena.gg/api/supervision/games/{roomId}/sanction
+```
+
+**Request body**
+
+```json
+{
+  "targetUserId": "usr_01J8X...",
+  "sanctionType": "GAME_FORFEIT",
+  "reason": "Player disconnected intentionally to avoid loss",
+  "evidence": "screenshot_url"
+}
+```
+
+| Field            | Type   | Required | Description                                              |
+| ---------------- | ------ | -------- | -------------------------------------------------------- |
+| `targetUserId`   | string | ✓        | The ID of the player being sanctioned.                   |
+| `sanctionType`   | enum   | ✓        | One of `WARNING`, `GAME_FORFEIT`, `TEMPORARY_BAN`, `PERMANENT_BAN`. |
+| `reason`         | string | ✓        | A clear explanation of the violation.                    |
+| `evidence`       | string |          | URL or description of supporting evidence.               |
+
+**Response `200 OK`**
+
+```json
+{
+  "sanctionId": "sanc_01J8X...",
+  "status": "APPLIED",
+  "affectedUserId": "usr_01J8X...",
+  "sanctionType": "GAME_FORFEIT",
+  "appliedAt": "2024-01-15T13:00:00Z"
+}
+```
+
+Save the `sanctionId` returned in the response — players need it to file an appeal.
+
+## Effect of a Game Forfeit
+
+When you apply a `GAME_FORFEIT` sanction, the following happens automatically and immediately:
+
+<Steps>
+  <Step title="Opponent declared winner">
+    The non-sanctioned player is declared the winner of the game.
+  </Step>
+  <Step title="Room moves to COMPLETED">
+    The game room transitions to `COMPLETED` status, bypassing any pending
+    result submissions.
+  </Step>
+  <Step title="Winnings distributed">
+    The Arena API distributes winnings to the declared winner using the standard
+    fee and commission schedule.
+  </Step>
+  <Step title="Supervisor commission credited">
+    Your supervision commission is credited to your wallet at the same time as
+    the winnings distribution.
+  </Step>
+</Steps>
+
+## Viewing Active Sanctions
+
+Players can check their own sanction history at any time using the `me` endpoint.
+
+```bash
+GET https://api.arena.gg/api/users/me/sanctions
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "content": [
+    {
+      "sanctionId": "sanc_01J8X...",
+      "sanctionType": "WARNING",
+      "reason": "Slow play — exceeded time limit",
+      "appliedAt": "2024-01-15T13:00:00Z",
+      "status": "ACTIVE",
+      "expiresAt": null
+    }
+  ]
+}
+```
+
+The `expiresAt` field is populated for `TEMPORARY_BAN` sanctions and is `null` for all other types.
+
+## Appealing a Sanction
+
+If you believe a sanction was applied unfairly, you can file a complaint referencing the `sanctionId`.
+
+```bash
+POST https://api.arena.gg/api/complaints
+```
+
+**Request body**
+
+```json
+{
+  "sanctionId": "sanc_01J8X...",
+  "reason": "The forfeit was applied without reviewing my submitted evidence.",
+  "evidence": "screenshot_url"
+}
+```
+
+Platform administrators review all sanction appeals. See the [Complaints API](/api/complaints) for the full request schema, response codes, and appeal status tracking.
+
+<Accordion title="What happens after I file an appeal?">
+  Your complaint is logged and assigned to a platform administrator for review.
+  You receive a WebSocket notification at `/topic/users/{userId}/complaints`
+  when the status of your complaint changes. Possible outcomes are `UPHELD`
+  (sanction reversed), `DISMISSED` (sanction stands), or `ESCALATED` (referred
+  to a senior reviewer). Appeals do not automatically lift an active sanction
+  while the review is in progress.
+</Accordion>
+
+<Note>
+  All sanction actions are recorded in the platform audit trail and are visible
+  to administrators. Supervisors should maintain clear, factual reasoning and
+  link to concrete evidence whenever possible to ensure the audit record is
+  complete.
+</Note>

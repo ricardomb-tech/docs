@@ -1,0 +1,264 @@
+---
+title: "Users API — Profile and Account Management"
+sidebarTitle: "Users"
+description: "View and update your Arena account profile, change your password, check your role and KYC status, and review any sanctions applied to your account."
+---
+
+The Users API lets you view and update your account profile, check your role and KYC status, and review any sanctions applied to your account. All endpoints in this section require a valid `Authorization: Bearer <accessToken>` header.
+
+---
+
+## GET /api/users/me
+
+Retrieve the full profile of the currently authenticated user, including their role, KYC verification status, and account timestamps.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/users/me
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Response — 200 OK
+
+<ResponseField name="id" type="string">
+  Unique user identifier (e.g. `usr_01HXYZ...`).
+</ResponseField>
+
+<ResponseField name="username" type="string">
+  Your current display name.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  The email address associated with your account.
+</ResponseField>
+
+<ResponseField name="role" type="string">
+  Your account role. One of `PLAYER`, `SUPERVISOR`, or `ADMIN`.
+</ResponseField>
+
+<ResponseField name="kycStatus" type="string">
+  Your current identity verification status. One of `PENDING`, `SUBMITTED`, `VERIFIED`, or `REJECTED`.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp of when your account was created.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string">
+  ISO 8601 timestamp of when your account was last updated.
+</ResponseField>
+
+### Example
+
+```bash
+curl https://api.arena.gg/api/users/me \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "id": "usr_01HXYZABCDEF123456",
+  "username": "shadowstrike99",
+  "email": "player@example.com",
+  "role": "PLAYER",
+  "kycStatus": "VERIFIED",
+  "createdAt": "2024-06-01T12:00:00Z",
+  "updatedAt": "2024-06-15T09:30:00Z"
+}
+```
+
+---
+
+## PUT /api/users/me
+
+Update your display name and/or email address. You may supply one or both fields. Fields you omit remain unchanged.
+
+**Method & Path**
+```
+PUT https://api.arena.gg/api/users/me
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Request Body
+
+<ParamField body="username" type="string">
+  A new unique display name. Omit to leave your current username unchanged.
+</ParamField>
+
+<ParamField body="email" type="string">
+  A new unique email address. Omit to leave your current email unchanged.
+</ParamField>
+
+### Response — 200 OK
+
+Returns the complete updated user object with the same fields as `GET /api/users/me`.
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `409 Conflict` | `USERNAME_TAKEN` | Another account already uses that username. |
+  | `409 Conflict` | `EMAIL_TAKEN` | Another account already uses that email. |
+  | `400 Bad Request` | `VALIDATION_ERROR` | A supplied field failed format validation. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X PUT https://api.arena.gg/api/users/me \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "shadowstrike_pro"
+  }'
+```
+
+```json
+{
+  "id": "usr_01HXYZABCDEF123456",
+  "username": "shadowstrike_pro",
+  "email": "player@example.com",
+  "role": "PLAYER",
+  "kycStatus": "VERIFIED",
+  "createdAt": "2024-06-01T12:00:00Z",
+  "updatedAt": "2024-07-01T11:00:00Z"
+}
+```
+
+---
+
+## PUT /api/users/me/password
+
+Change your account password. You must supply your current password to authorize the change.
+
+**Method & Path**
+```
+PUT https://api.arena.gg/api/users/me/password
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Request Body
+
+<ParamField body="currentPassword" type="string" required>
+  Your existing account password. The request is rejected if this does not match.
+</ParamField>
+
+<ParamField body="newPassword" type="string" required>
+  Your new password. Minimum 8 characters.
+</ParamField>
+
+### Response — 204 No Content
+
+An empty body is returned on success. All existing refresh tokens are revoked — you must log in again with your new password.
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `400 Bad Request` | `INCORRECT_PASSWORD` | The value of `currentPassword` does not match your account password. |
+  | `400 Bad Request` | `VALIDATION_ERROR` | `newPassword` is fewer than 8 characters. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X PUT https://api.arena.gg/api/users/me/password \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "currentPassword": "secureP@ssw0rd",
+    "newPassword": "n3wSup3rS3cure!"
+  }'
+```
+
+A `204 No Content` response confirms the password was changed. Log in again to obtain fresh tokens.
+
+---
+
+## GET /api/users/me/sanctions
+
+Retrieve a paginated list of all sanctions that have been applied to your account. Sanctions can include warnings, game forfeits, and temporary bans issued by supervisors.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/users/me/sanctions
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Query Parameters
+
+<ParamField query="page" type="integer">
+  Zero-based page number. Defaults to `0`.
+</ParamField>
+
+<ParamField query="size" type="integer">
+  Number of records per page. Defaults to `20`.
+</ParamField>
+
+### Response — 200 OK
+
+Returns a paginated wrapper containing an array of sanction objects.
+
+<ResponseField name="content" type="array">
+  Array of sanction records for the current page.
+</ResponseField>
+
+<ResponseField name="content[].id" type="string">
+  Unique sanction identifier.
+</ResponseField>
+
+<ResponseField name="content[].type" type="string">
+  Sanction type. One of `WARNING`, `GAME_FORFEIT`, or `TEMPORARY_BAN`.
+</ResponseField>
+
+<ResponseField name="content[].reason" type="string">
+  Human-readable explanation of why the sanction was applied.
+</ResponseField>
+
+<ResponseField name="content[].appliedAt" type="string">
+  ISO 8601 timestamp of when the sanction was applied.
+</ResponseField>
+
+<ResponseField name="content[].appliedBy" type="string">
+  User ID of the supervisor who applied the sanction.
+</ResponseField>
+
+<ResponseField name="content[].gameRoomId" type="string">
+  ID of the game room associated with this sanction, if applicable. May be `null` for account-level sanctions.
+</ResponseField>
+
+<ResponseField name="totalElements" type="integer">
+  Total number of sanctions across all pages.
+</ResponseField>
+
+<ResponseField name="totalPages" type="integer">
+  Total number of pages available.
+</ResponseField>
+
+### Example
+
+```bash
+curl "https://api.arena.gg/api/users/me/sanctions?page=0&size=10" \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "content": [
+    {
+      "id": "sanc_01HABC123",
+      "type": "WARNING",
+      "reason": "Unsportsmanlike conduct during match.",
+      "appliedAt": "2024-06-20T14:45:00Z",
+      "appliedBy": "usr_01HSUPERVISOR99",
+      "gameRoomId": "room_01HROOM456"
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1
+}
+```

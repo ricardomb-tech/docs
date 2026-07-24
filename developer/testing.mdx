@@ -1,0 +1,154 @@
+---
+title: "Testing Strategy for Arena Backend"
+sidebarTitle: "Testing"
+description: "Overview of Arena Backend's layered testing strategy — unit, module integration, slice, and full end-to-end tests using JUnit 5, Spring Modulith, and Testcontainers."
+---
+
+Arena Backend uses a layered testing strategy: unit tests for domain logic, integration tests for each Spring Modulith module, and end-to-end API tests using real PostgreSQL and Redis via Testcontainers. Each layer catches a different class of defect, and together they give you fast feedback during development without sacrificing confidence in the overall system.
+
+## Test Layers
+
+| Layer | Approach | Tools |
+|---|---|---|
+| **Unit Tests** | Pure domain logic with no Spring context loaded | JUnit 5, Mockito |
+| **Module Integration Tests** | Each Spring Modulith module tested in isolation | `@ApplicationModuleTest`, JUnit 5 |
+| **Slice Tests** | Controller or repository layer tested independently | `@WebMvcTest`, `@DataJpaTest` |
+| **Full Integration Tests** | Full Spring context with real database and cache | Spring Boot Test, Testcontainers |
+
+Start with unit tests for business rules, use module integration tests to verify wiring within a module, and reserve full integration tests for cross-cutting flows like payment processing or authentication.
+
+## Running Tests
+
+<CodeGroup>
+  ```bash All tests
+  mvn test
+  ```
+
+  ```bash Integration tests only
+  mvn test -Dgroups=integration
+  ```
+
+  ```bash Single module
+  mvn test -pl wallet-module
+  ```
+</CodeGroup>
+
+Run `mvn verify` to execute the complete verification lifecycle, including integration tests and any Maven failsafe plugin checks:
+
+```bash
+mvn verify
+```
+
+Use `mvn verify` in CI pipelines to ensure nothing is skipped. Use `mvn test` locally when you want a faster feedback loop during development.
+
+## Module Isolation Tests
+
+Spring Modulith's `@ApplicationModuleTest` annotation runs each module in a restricted Spring context that only loads the beans belonging to that module. This validates two things: the module works correctly on its own, and it does not leak dependencies on other modules' internals.
+
+```java WalletModuleIntegrationTests.java
+@ApplicationModuleTest
+class WalletModuleIntegrationTests {
+
+  @Autowired
+  WalletService walletService;
+
+  @Test
+  void shouldCreditWalletOnDeposit() {
+    // test wallet module in isolation
+    // Spring Modulith ensures no beans from other modules are loaded
+  }
+
+  @Test
+  void shouldDebitWalletOnMatchEntry() {
+    // ...
+  }
+}
+```
+
+If a module illegally depends on the internal types of another module, Spring Modulith will throw an error at test startup — before any test method runs. This makes architectural violations visible early, rather than at code review or runtime.
+
+## Slice Tests
+
+Slice tests load only the portion of the Spring context relevant to a single layer. Use them to test controllers and repositories without spinning up the full application.
+
+```java GameRoomControllerTest.java
+@WebMvcTest(GameRoomController.class)
+class GameRoomControllerTest {
+
+  @Autowired
+  MockMvc mockMvc;
+
+  @MockBean
+  GameRoomService gameRoomService;
+
+  @Test
+  void shouldReturn201WhenRoomCreated() throws Exception {
+    // arrange, act, assert using MockMvc
+  }
+}
+```
+
+```java GameRoomRepositoryTest.java
+@DataJpaTest
+class GameRoomRepositoryTest {
+
+  @Autowired
+  GameRoomRepository repository;
+
+  @Test
+  void shouldPersistRoomWithStakeAmount() {
+    // real H2 or Testcontainers PostgreSQL, no web layer
+  }
+}
+```
+
+## Testcontainers
+
+Full integration tests spin up real PostgreSQL and Redis containers using [Testcontainers](https://testcontainers.com/). No manual service setup is required — the containers start before the first test and stop after the last.
+
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@Testcontainers
+class FullIntegrationTests {
+
+  @Container
+  static PostgreSQLContainer<?> postgres =
+    new PostgreSQLContainer<>("postgres:15");
+
+  @Container
+  static GenericContainer<?> redis =
+    new GenericContainer<>("redis:7").withExposedPorts(6379);
+
+  @DynamicPropertySource
+  static void configureProperties(DynamicPropertyRegistry registry) {
+    registry.add("spring.datasource.url", postgres::getJdbcUrl);
+    registry.add("spring.datasource.username", postgres::getUsername);
+    registry.add("spring.datasource.password", postgres::getPassword);
+    registry.add("redis.host", redis::getHost);
+    registry.add("redis.port", () -> redis.getMappedPort(6379));
+  }
+
+  @Test
+  void shouldCompleteFullMatchFlow() {
+    // test the entire lifecycle: room creation → match → result → payout
+  }
+}
+```
+
+Testcontainers requires Docker to be running on the host machine. Tests will be skipped automatically if Docker is not available.
+
+## Test Coverage
+
+Aim for **>80% line coverage** on domain and service logic. Controllers and repositories are covered by their respective slice and integration tests, so you don't need to duplicate that coverage in unit tests.
+
+Track coverage using the Maven Jacoco plugin:
+
+```bash
+mvn verify jacoco:report
+```
+
+The HTML report is generated at `target/site/jacoco/index.html`. Review it to identify untested branches in complex domain logic — particularly around game result validation, dispute resolution, and wallet transaction rules.
+
+<Tip>
+  `@ApplicationModuleTest` is the recommended starting point for any new module you add to Arena Backend. Run it immediately after scaffolding the module to verify its boundaries are correctly defined — it catches accidental imports of internal types from other modules before they become entrenched in the codebase.
+</Tip>

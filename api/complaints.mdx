@@ -1,0 +1,245 @@
+---
+title: "Complaints API — File and Track Disputes"
+sidebarTitle: "Complaints"
+description: "File formal disputes about game results, sanctions, or platform conduct. Track investigation progress and view resolutions assigned by supervisors to your complaints."
+---
+
+The Complaints API lets players file formal disputes about game results, sanctions, or platform conduct. Each complaint is assigned to a supervisor for investigation and resolution. You can track status changes in real time and view the final decision once your complaint is resolved.
+
+<Note>
+  Filing a `RESULT_DISPUTE` complaint against a game room automatically transitions that room to `DISPUTED` status, pausing any pending winnings distribution until the complaint is resolved.
+</Note>
+
+---
+
+## POST /api/complaints
+
+Submit a new complaint. Provide the type, the ID of the related entity (game room, sanction, etc.), a written description, and any supporting evidence.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/complaints
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Request Body
+
+<ParamField body="type" type="string" required>
+  The category of your complaint. One of:
+  - `RESULT_DISPUTE` — you believe the match outcome was recorded incorrectly
+  - `SANCTION_APPEAL` — you are appealing a sanction applied to your account
+  - `CONDUCT` — you are reporting unsportsmanlike or abusive behaviour by another player
+</ParamField>
+
+<ParamField body="relatedEntityId" type="string" required>
+  The ID of the entity your complaint relates to. For `RESULT_DISPUTE` and `CONDUCT`, supply the `roomId` (e.g. `room_01HROOM...`). For `SANCTION_APPEAL`, supply the `sanctionId` (e.g. `sanc_01H...`).
+</ParamField>
+
+<ParamField body="description" type="string" required>
+  A clear, factual account of your concern. The more detail you provide, the faster the investigation can proceed.
+</ParamField>
+
+<ParamField body="evidence" type="string">
+  A URL to supporting media (screenshot, video) or additional written context. Strongly recommended for all complaint types.
+</ParamField>
+
+### Response — 201 Created
+
+<ResponseField name="complaintId" type="string">
+  Unique identifier for your complaint (e.g. `cmp_01HCMP...`).
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Always `"OPEN"` immediately after filing.
+</ResponseField>
+
+<ResponseField name="submittedAt" type="string">
+  ISO 8601 timestamp of when the complaint was submitted.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `400 Bad Request` | `VALIDATION_ERROR` | A required field is missing or contains an invalid value. |
+  | `400 Bad Request` | `INVALID_ENTITY` | The `relatedEntityId` does not exist or does not belong to your account. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/complaints \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "RESULT_DISPUTE",
+    "relatedEntityId": "room_01HROOM456XYZ",
+    "description": "My opponent submitted the wrong winner. I have video proof that I won 3-1.",
+    "evidence": "https://cdn.example.com/clips/match_01HROOM456XYZ.mp4"
+  }'
+```
+
+```json
+{
+  "complaintId": "cmp_01HCMP789ABC",
+  "status": "OPEN",
+  "submittedAt": "2024-06-21T10:00:00Z"
+}
+```
+
+---
+
+## GET /api/complaints
+
+Retrieve a paginated list of all complaints you have filed, optionally filtered by status.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/complaints
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Query Parameters
+
+<ParamField query="status" type="string">
+  Filter by complaint status. One of `OPEN`, `UNDER_REVIEW`, `RESOLVED`, or `CLOSED`.
+</ParamField>
+
+<ParamField query="page" type="integer">
+  Zero-based page number. Defaults to `0`.
+</ParamField>
+
+<ParamField query="size" type="integer">
+  Records per page. Defaults to `20`.
+</ParamField>
+
+### Response — 200 OK
+
+Returns a paginated list of complaint summary objects, each including `complaintId`, `type`, `status`, `relatedEntityId`, and `submittedAt`.
+
+### Example
+
+```bash
+curl "https://api.arena.gg/api/complaints?status=OPEN&page=0&size=10" \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "content": [
+    {
+      "complaintId": "cmp_01HCMP789ABC",
+      "type": "RESULT_DISPUTE",
+      "status": "OPEN",
+      "relatedEntityId": "room_01HROOM456XYZ",
+      "submittedAt": "2024-06-21T10:00:00Z"
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1
+}
+```
+
+---
+
+## GET /api/complaints/{complaintId}
+
+Retrieve the full detail of a specific complaint, including the assigned supervisor, investigation status, and any resolution decision.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/complaints/{complaintId}
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Path Parameters
+
+<ParamField path="complaintId" type="string" required>
+  The unique ID of the complaint you want to retrieve.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="id" type="string">
+  Unique complaint identifier.
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  Complaint category: `RESULT_DISPUTE`, `SANCTION_APPEAL`, or `CONDUCT`.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status of the complaint. See the [status table](#complaint-status-values) below.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  The written description you submitted.
+</ResponseField>
+
+<ResponseField name="relatedEntityId" type="string">
+  ID of the entity the complaint relates to (game room or sanction).
+</ResponseField>
+
+<ResponseField name="resolution" type="string">
+  The supervisor's decision and explanation. `null` until the complaint is `RESOLVED` or `CLOSED`.
+</ResponseField>
+
+<ResponseField name="assignedSupervisorId" type="string">
+  User ID of the supervisor handling your complaint. `null` if not yet assigned.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp of when the complaint was filed.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string">
+  ISO 8601 timestamp of the most recent update to this complaint.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `404 Not Found` | `COMPLAINT_NOT_FOUND` | No complaint with that ID exists, or it does not belong to your account. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
+### Example
+
+```bash
+curl https://api.arena.gg/api/complaints/cmp_01HCMP789ABC \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "id": "cmp_01HCMP789ABC",
+  "type": "RESULT_DISPUTE",
+  "status": "UNDER_REVIEW",
+  "description": "My opponent submitted the wrong winner. I have video proof that I won 3-1.",
+  "relatedEntityId": "room_01HROOM456XYZ",
+  "resolution": null,
+  "assignedSupervisorId": "usr_01HSUPERVISOR99",
+  "createdAt": "2024-06-21T10:00:00Z",
+  "updatedAt": "2024-06-21T11:30:00Z"
+}
+```
+
+---
+
+## Complaint Status Values
+
+Track your complaint through the following lifecycle stages:
+
+| Status | Meaning |
+|--------|---------|
+| `OPEN` | Your complaint has been filed and is awaiting assignment to a supervisor. |
+| `UNDER_REVIEW` | A supervisor has been assigned and is actively investigating. |
+| `RESOLVED` | The supervisor has reached a decision. Check the `resolution` field for the outcome. |
+| `CLOSED` | You have acknowledged the resolution and the complaint is finalised. |
+
+<Tip>
+  Poll `GET /api/complaints/{complaintId}` periodically to check for status updates while your complaint is `OPEN` or `UNDER_REVIEW`.
+</Tip>

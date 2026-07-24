@@ -1,0 +1,86 @@
+---
+title: "Arena Backend: Real-Money Skill Gaming Platform API"
+sidebarTitle: "Introduction"
+description: "Arena Backend powers a competitive skill gaming ecosystem with private game rooms, live supervision, real-money wallets, and PayPal deposits. Get started here."
+---
+
+Arena Backend is the API platform behind a real-money Skill Gaming ecosystem. Players compete in private game rooms, supervisors monitor matches live, complaints and sanctions keep games fair, and a double-entry ledger wallet tracks every cent with complete auditability.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Make your first authenticated API call in minutes
+  </Card>
+  <Card title="Authentication" icon="lock" href="/auth/overview">
+    Learn how JWT RS256 tokens work and how to obtain one
+  </Card>
+  <Card title="Wallet & Payments" icon="wallet" href="/wallet/overview">
+    Understand the double-entry ledger and how to deposit funds
+  </Card>
+  <Card title="Game Lifecycle" icon="gamepad" href="/gaming/game-lifecycle">
+    Create rooms, join matches, and submit results
+  </Card>
+  <Card title="Real-Time Updates" icon="bolt" href="/realtime/websocket">
+    Connect via WebSocket/STOMP for live game state
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/auth">
+    Full endpoint reference for every resource
+  </Card>
+</CardGroup>
+
+## Platform Overview
+
+Arena Backend is built as a modular platform with five core domains that work together to deliver a seamless competitive gaming experience:
+
+<CardGroup cols={2}>
+  <Card title="Identity & KYC" icon="id-card" href="/auth/kyc">
+    User registration, profile management, and manual KYC verification to comply with real-money gaming regulations
+  </Card>
+  <Card title="Wallet Ledger" icon="scale-balanced" href="/wallet/overview">
+    Every balance change is recorded as a double-entry transaction — deposits, wagers, winnings, and commissions
+  </Card>
+  <Card title="Game Rooms" icon="chess" href="/gaming/game-lifecycle">
+    Players create or join private rooms, stake funds, play matches, and receive winnings automatically
+  </Card>
+  <Card title="Live Supervision" icon="eye" href="/gaming/supervision">
+    Supervisors monitor active matches, apply sanctions for rule violations, and earn commissions
+  </Card>
+  <Card title="Dispute Resolution" icon="gavel" href="/api/complaints">
+    Players can file complaints; supervisors investigate and resolve disputes with full audit trails
+  </Card>
+  <Card title="Real-Time Events" icon="satellite-dish" href="/realtime/websocket">
+    WebSocket/STOMP subscriptions deliver instant game state, wallet updates, and supervision actions
+  </Card>
+</CardGroup>
+
+## How It Works
+
+<Steps>
+  <Step title="Register & Verify">
+    Create an account via `POST /api/auth/register`, then complete KYC verification so you can deposit and wager real money.
+  </Step>
+  <Step title="Fund Your Wallet">
+    Use the PayPal integration to create a deposit order and capture payment. Funds appear in your double-entry ledger wallet instantly after webhook confirmation.
+  </Step>
+  <Step title="Create or Join a Game Room">
+    Create a private room with a stake amount, or join an existing open room. Both players' stakes are locked until the match concludes.
+  </Step>
+  <Step title="Play & Receive Winnings">
+    Submit the match result. The platform verifies the result (optionally with a supervisor present), transfers winnings, and records every transaction in the ledger.
+  </Step>
+</Steps>
+
+## Key Capabilities
+
+| Capability | Details |
+|---|---|
+| **Authentication** | JWT RS256 — asymmetric signing, short-lived access tokens + refresh tokens |
+| **KYC** | Manual identity verification required before real-money play |
+| **Wallet** | Double-entry ledger; every debit has a matching credit |
+| **Deposits** | PayPal Orders API v2 with HMAC-SHA256 webhook verification |
+| **Real-Time** | WebSocket/STOMP over `/ws/arena`; Redis Pub/Sub for multi-instance fan-out |
+| **Supervision** | Supervisors earn commissions on every supervised game they oversee |
+| **Complaints** | Structured complaint workflow with supervisor-led resolution |
+
+<Note>
+  All financial operations require a verified KYC status. Ensure your account is verified before attempting deposits or joining real-money game rooms.
+</Note>

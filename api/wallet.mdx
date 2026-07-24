@@ -1,0 +1,200 @@
+---
+title: "Wallet API — Balance and Transaction History"
+sidebarTitle: "Wallet"
+description: "Check your available and locked real-money balance and browse your full transaction history, including deposits, wagers, winnings, commissions, and refunds."
+---
+
+The Wallet API gives you visibility into your available balance, locked funds, and a full history of every credit and debit recorded in the double-entry ledger. Funds are locked when you join a game room and released or redistributed once the result is confirmed.
+
+<Note>
+  All monetary values are returned as **decimal strings** (e.g. `"25.50"`) to preserve precision. Parse them with a decimal-safe library rather than native floating-point types.
+</Note>
+
+---
+
+## GET /api/wallet/balance
+
+Retrieve your current wallet balance, broken down into available funds, locked funds held against active wagers, and their combined total.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/wallet/balance
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Response — 200 OK
+
+<ResponseField name="userId" type="string">
+  The user ID this wallet belongs to.
+</ResponseField>
+
+<ResponseField name="available" type="string">
+  Funds you can freely spend or withdraw, expressed as a decimal string (e.g. `"42.75"`).
+</ResponseField>
+
+<ResponseField name="locked" type="string">
+  Funds currently locked against one or more active game room wagers. Not spendable until released.
+</ResponseField>
+
+<ResponseField name="total" type="string">
+  Sum of `available` and `locked`. Represents your gross wallet balance.
+</ResponseField>
+
+<ResponseField name="currency" type="string">
+  ISO 4217 currency code. Currently always `"USD"`.
+</ResponseField>
+
+### Example
+
+```bash
+curl https://api.arena.gg/api/wallet/balance \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "userId": "usr_01HXYZABCDEF123456",
+  "available": "42.75",
+  "locked": "10.00",
+  "total": "52.75",
+  "currency": "USD"
+}
+```
+
+---
+
+## GET /api/wallet/transactions
+
+Retrieve a paginated, reverse-chronological list of all transactions recorded against your wallet. You can filter by transaction type to focus on a specific category of movement.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/wallet/transactions
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Query Parameters
+
+<ParamField query="page" type="integer">
+  Zero-based page number. Defaults to `0`.
+</ParamField>
+
+<ParamField query="size" type="integer">
+  Number of records per page. Defaults to `20`. Maximum `100`.
+</ParamField>
+
+<ParamField query="type" type="string">
+  Filter transactions by type. Omit to return all types. See the table below for valid values.
+</ParamField>
+
+### Transaction Types
+
+| Type | Description |
+|------|-------------|
+| `DEPOSIT` | Funds added via a PayPal deposit. |
+| `WAGER` | Funds locked when you join a paid game room. |
+| `WAGER_RELEASE` | Locked wager returned when a room is cancelled or you lose. |
+| `WINNING` | Prize credited to your wallet after a confirmed win. |
+| `COMMISSION` | Commission deducted from winnings (or credited to a supervisor). |
+| `REFUND` | Manual refund issued by the platform. |
+
+### Response — 200 OK
+
+<ResponseField name="content" type="array">
+  Array of transaction objects for the current page.
+</ResponseField>
+
+<ResponseField name="content[].id" type="string">
+  Unique transaction identifier.
+</ResponseField>
+
+<ResponseField name="content[].type" type="string">
+  One of the transaction types listed above.
+</ResponseField>
+
+<ResponseField name="content[].amount" type="string">
+  Transaction amount as a decimal string. Always positive; direction is implied by `type`.
+</ResponseField>
+
+<ResponseField name="content[].balanceBefore" type="string">
+  Your `available` balance immediately before this transaction was applied.
+</ResponseField>
+
+<ResponseField name="content[].balanceAfter" type="string">
+  Your `available` balance immediately after this transaction was applied.
+</ResponseField>
+
+<ResponseField name="content[].description" type="string">
+  Human-readable description of the transaction.
+</ResponseField>
+
+<ResponseField name="content[].relatedEntityId" type="string">
+  ID of the entity associated with this transaction (e.g. a `room_...` ID for wagers or a `dep_...` ID for deposits). May be `null`.
+</ResponseField>
+
+<ResponseField name="content[].createdAt" type="string">
+  ISO 8601 timestamp of when the transaction was recorded.
+</ResponseField>
+
+<ResponseField name="totalElements" type="integer">
+  Total number of transactions across all pages.
+</ResponseField>
+
+<ResponseField name="totalPages" type="integer">
+  Total number of pages available at the requested `size`.
+</ResponseField>
+
+### Example — All transactions
+
+```bash
+curl "https://api.arena.gg/api/wallet/transactions?page=0&size=5" \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "content": [
+    {
+      "id": "txn_01HWIN999",
+      "type": "WINNING",
+      "amount": "18.00",
+      "balanceBefore": "24.75",
+      "balanceAfter": "42.75",
+      "description": "Prize for winning room room_01HROOM456",
+      "relatedEntityId": "room_01HROOM456",
+      "createdAt": "2024-06-20T16:10:00Z"
+    },
+    {
+      "id": "txn_01HWAGER001",
+      "type": "WAGER",
+      "amount": "10.00",
+      "balanceBefore": "34.75",
+      "balanceAfter": "24.75",
+      "description": "Stake locked for room room_01HROOM456",
+      "relatedEntityId": "room_01HROOM456",
+      "createdAt": "2024-06-20T15:00:00Z"
+    },
+    {
+      "id": "txn_01HDEP001",
+      "type": "DEPOSIT",
+      "amount": "50.00",
+      "balanceBefore": "0.00",
+      "balanceAfter": "50.00",
+      "description": "PayPal deposit — order 5O190258X4227845J",
+      "relatedEntityId": "dep_01HDEP789",
+      "createdAt": "2024-06-18T10:00:00Z"
+    }
+  ],
+  "totalElements": 3,
+  "totalPages": 1
+}
+```
+
+### Example — Filter by type
+
+```bash
+curl "https://api.arena.gg/api/wallet/transactions?type=DEPOSIT&page=0&size=20" \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```

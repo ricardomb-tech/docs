@@ -1,0 +1,420 @@
+---
+title: "Supervision API — Monitor and Manage Matches"
+sidebarTitle: "Supervision"
+description: "Supervisor-role endpoints for accepting game oversight assignments, validating or overriding match results, applying player sanctions, and tracking commission earnings."
+---
+
+The Supervision API is for users with the `SUPERVISOR` role. Use it to find games needing oversight, accept supervision assignments, validate match results, and track commission earnings. All endpoints in this section require a valid access token belonging to a `SUPERVISOR`-role account.
+
+<Note>
+  If you are a player and believe a result was handled unfairly, use the [Complaints API](/api/complaints) to file a formal dispute rather than contacting supervisors directly.
+</Note>
+
+---
+
+## GET /api/supervision/games
+
+List game rooms that are available for supervision or that you are currently overseeing, optionally filtered by status.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/supervision/games
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required. `SUPERVISOR` role required.
+
+### Query Parameters
+
+<ParamField query="status" type="string">
+  Filter by supervision status. One of `AWAITING_SUPERVISOR`, `IN_PROGRESS`, or `COMPLETED`.
+</ParamField>
+
+<ParamField query="page" type="integer">
+  Zero-based page number. Defaults to `0`.
+</ParamField>
+
+<ParamField query="size" type="integer">
+  Records per page. Defaults to `20`.
+</ParamField>
+
+### Response — 200 OK
+
+Returns a paginated list of game room summaries including `roomId`, `gameType`, `stakeAmount`, `status`, `supervisorId`, and `createdAt`.
+
+### Example
+
+```bash
+curl "https://api.arena.gg/api/supervision/games?status=AWAITING_SUPERVISOR&page=0&size=10" \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "content": [
+    {
+      "roomId": "room_01HROOM456XYZ",
+      "gameType": "FIFA_24",
+      "stakeAmount": "10.00",
+      "status": "AWAITING_SUPERVISOR",
+      "supervisorId": null,
+      "createdAt": "2024-06-20T14:00:00Z"
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1
+}
+```
+
+---
+
+## POST /api/supervision/games/{roomId}/accept
+
+Accept a supervision assignment for a game room. Once you accept, you are the designated supervisor for that room and responsible for validating its result.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/supervision/games/{roomId}/accept
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required. `SUPERVISOR` role required.
+
+### Path Parameters
+
+<ParamField path="roomId" type="string" required>
+  The ID of the game room you are accepting supervision for.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="roomId" type="string">
+  The room you are now supervising.
+</ResponseField>
+
+<ResponseField name="supervisorId" type="string">
+  Your user ID, confirming assignment.
+</ResponseField>
+
+<ResponseField name="commissionRate" type="string">
+  The commission rate you will earn on this match (e.g. `"0.05"` for 5%).
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Updated room status.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `409 Conflict` | `ALREADY_HAS_SUPERVISOR` | Another supervisor has already accepted this room. |
+  | `404 Not Found` | `ROOM_NOT_FOUND` | No room with that ID exists. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/supervision/games/room_01HROOM456XYZ/accept \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "roomId": "room_01HROOM456XYZ",
+  "supervisorId": "usr_01HSUPERVISOR99",
+  "commissionRate": "0.05",
+  "status": "IN_PROGRESS"
+}
+```
+
+---
+
+## POST /api/supervision/games/{roomId}/validate-result
+
+Confirm the winner of a supervised match. Once validated, the game moves to `COMPLETED`, winnings are distributed to the winner, and your commission is credited to your wallet.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/supervision/games/{roomId}/validate-result
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required. `SUPERVISOR` role required. You must be the assigned supervisor for this room.
+
+### Path Parameters
+
+<ParamField path="roomId" type="string" required>
+  The ID of the game room whose result you are validating.
+</ParamField>
+
+### Request Body
+
+<ParamField body="confirmedWinnerId" type="string" required>
+  The user ID of the player you confirm as the winner.
+</ParamField>
+
+### Response — 200 OK
+
+Returns the updated game room object with `status: "COMPLETED"` and result details. Your commission is reflected in `GET /api/supervision/commissions`.
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/supervision/games/room_01HROOM456XYZ/validate-result \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{ "confirmedWinnerId": "usr_01HXYZABCDEF123456" }'
+```
+
+```json
+{
+  "roomId": "room_01HROOM456XYZ",
+  "status": "COMPLETED",
+  "winnerId": "usr_01HXYZABCDEF123456",
+  "completedAt": "2024-06-20T17:30:00Z"
+}
+```
+
+---
+
+## POST /api/supervision/games/{roomId}/override-result
+
+Override the submitted or validated result with a different outcome. Use this when new evidence contradicts the initial result. Winnings are redistributed accordingly.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/supervision/games/{roomId}/override-result
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required. `SUPERVISOR` role required.
+
+<Warning>
+  Result overrides are permanent and trigger an immediate reallocation of funds. Always document your reasoning thoroughly in the `reason` field — all overrides are logged and auditable.
+</Warning>
+
+### Path Parameters
+
+<ParamField path="roomId" type="string" required>
+  The ID of the game room whose result you are overriding.
+</ParamField>
+
+### Request Body
+
+<ParamField body="winnerId" type="string" required>
+  The user ID of the player who should now be recognised as the winner.
+</ParamField>
+
+<ParamField body="reason" type="string" required>
+  A clear explanation of why the result is being overridden. This is recorded in the audit log.
+</ParamField>
+
+### Response — 200 OK
+
+Returns the updated game room with the corrected result and `status: "COMPLETED"`.
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/supervision/games/room_01HROOM456XYZ/override-result \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "winnerId": "usr_01HOPPONENT9999",
+    "reason": "Video evidence from both players confirms opponent won. Initial submission was fraudulent."
+  }'
+```
+
+```json
+{
+  "roomId": "room_01HROOM456XYZ",
+  "status": "COMPLETED",
+  "winnerId": "usr_01HOPPONENT9999",
+  "overriddenAt": "2024-06-21T09:00:00Z"
+}
+```
+
+---
+
+## POST /api/supervision/games/{roomId}/sanction
+
+Apply a sanction to a player in a supervised game room. Sanctions range from formal warnings to temporary bans.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/supervision/games/{roomId}/sanction
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required. `SUPERVISOR` role required.
+
+### Path Parameters
+
+<ParamField path="roomId" type="string" required>
+  The ID of the game room in which the sanctionable conduct occurred.
+</ParamField>
+
+### Request Body
+
+<ParamField body="targetUserId" type="string" required>
+  The user ID of the player to sanction.
+</ParamField>
+
+<ParamField body="sanctionType" type="string" required>
+  Severity of the sanction. One of `WARNING`, `GAME_FORFEIT`, or `TEMPORARY_BAN`.
+</ParamField>
+
+<ParamField body="reason" type="string" required>
+  A clear, factual description of the conduct that warranted the sanction.
+</ParamField>
+
+<ParamField body="evidence" type="string">
+  URL of supporting evidence (screenshot, video). Strongly recommended for `GAME_FORFEIT` and `TEMPORARY_BAN`.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="sanctionId" type="string">
+  Unique identifier for the sanction record.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Always `"APPLIED"` on success.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/supervision/games/room_01HROOM456XYZ/sanction \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "targetUserId": "usr_01HXYZABCDEF123456",
+    "sanctionType": "WARNING",
+    "reason": "Player used offensive language in the post-game chat.",
+    "evidence": "https://cdn.example.com/evidence/chat_screenshot.png"
+  }'
+```
+
+```json
+{
+  "sanctionId": "sanc_01HABC123XYZ",
+  "status": "APPLIED"
+}
+```
+
+---
+
+## GET /api/supervision/commissions
+
+Retrieve a summary and itemised list of commission earnings from your supervised matches, optionally filtered by date range.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/supervision/commissions
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required. `SUPERVISOR` role required.
+
+### Query Parameters
+
+<ParamField query="from" type="string">
+  Start date filter in `YYYY-MM-DD` format (inclusive).
+</ParamField>
+
+<ParamField query="to" type="string">
+  End date filter in `YYYY-MM-DD` format (inclusive).
+</ParamField>
+
+<ParamField query="page" type="integer">
+  Zero-based page number. Defaults to `0`.
+</ParamField>
+
+<ParamField query="size" type="integer">
+  Records per page. Defaults to `20`.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="totalEarned" type="string">
+  Total commission earned within the filtered period as a decimal string.
+</ResponseField>
+
+<ResponseField name="commissions" type="array">
+  Paginated array of individual commission records, each containing `roomId`, `amount`, `rate`, and `creditedAt`.
+</ResponseField>
+
+### Example
+
+```bash
+curl "https://api.arena.gg/api/supervision/commissions?from=2024-06-01&to=2024-06-30&page=0&size=20" \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "totalEarned": "4.50",
+  "commissions": [
+    {
+      "roomId": "room_01HROOM456XYZ",
+      "amount": "1.00",
+      "rate": "0.05",
+      "creditedAt": "2024-06-20T17:30:00Z"
+    },
+    {
+      "roomId": "room_01HROOM789ABC",
+      "amount": "3.50",
+      "rate": "0.05",
+      "creditedAt": "2024-06-25T20:00:00Z"
+    }
+  ],
+  "totalElements": 2,
+  "totalPages": 1
+}
+```
+
+---
+
+## GET /api/supervision/games/my-history
+
+Retrieve a paginated history of all game rooms you have supervised, including completed and overridden results.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/supervision/games/my-history
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required. `SUPERVISOR` role required.
+
+### Query Parameters
+
+<ParamField query="page" type="integer">
+  Zero-based page number. Defaults to `0`.
+</ParamField>
+
+<ParamField query="size" type="integer">
+  Records per page. Defaults to `20`.
+</ParamField>
+
+### Response — 200 OK
+
+Returns a paginated list of game rooms you supervised, each including `roomId`, `gameType`, `stakeAmount`, `status`, `winnerId`, and `completedAt`.
+
+### Example
+
+```bash
+curl "https://api.arena.gg/api/supervision/games/my-history?page=0&size=10" \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "content": [
+    {
+      "roomId": "room_01HROOM456XYZ",
+      "gameType": "FIFA_24",
+      "stakeAmount": "10.00",
+      "status": "COMPLETED",
+      "winnerId": "usr_01HXYZABCDEF123456",
+      "completedAt": "2024-06-20T17:30:00Z"
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1
+}
+```

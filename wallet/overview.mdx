@@ -1,0 +1,112 @@
+---
+title: "Wallet & Double-Entry Ledger Overview"
+sidebarTitle: "Overview"
+description: "Arena's double-entry ledger tracks every balance, transaction, and financial event — ensuring the platform's books always balance with full auditability."
+---
+
+Arena Backend maintains a double-entry ledger wallet as the single source of truth for all balances. Every debit has a matching credit, so the platform's books always balance and every dollar is fully accounted for. Whether funds are deposited, wagered, won, or refunded, the ledger captures both sides of each transaction in real time.
+
+## Understanding Your Balance
+
+Your wallet balance is split into three views so you always know exactly what you can spend and what is committed to active games.
+
+| Field | Description |
+|---|---|
+| `available` | Funds you can use immediately for new wagers or withdrawals |
+| `locked` | Funds held in escrow for active game rooms you have joined |
+| `total` | `available + locked` — your complete wallet balance |
+
+Retrieve your current balance at any time with a single request:
+
+```bash
+GET /api/wallet/balance
+```
+
+```json
+{
+  "userId": "usr_01J8X...",
+  "available": "45.50",
+  "locked": "10.00",
+  "total": "55.50",
+  "currency": "USD"
+}
+```
+
+<Note>
+  All monetary values are returned as strings to preserve decimal precision and avoid floating-point rounding errors.
+</Note>
+
+## Transaction Types
+
+Every change to your wallet is recorded as a typed transaction. The type tells you exactly why your balance changed.
+
+| Type | Description |
+|---|---|
+| `DEPOSIT` | Funds added to your wallet via PayPal |
+| `WAGER` | Funds locked into escrow when you join a game room |
+| `WAGER_RELEASE` | Locked funds returned to available balance on draw or cancellation |
+| `WINNING` | Funds credited to your wallet after winning a match |
+| `COMMISSION` | Funds credited to a supervisor for overseeing a game |
+| `REFUND` | Funds returned to your wallet after a complaint is resolved |
+
+## Transaction History
+
+Retrieve a paginated list of your past transactions using the `/api/wallet/transactions` endpoint. Filter by type and page through results using query parameters.
+
+```bash
+GET /api/wallet/transactions?page=0&size=20&type=DEPOSIT
+```
+
+**Query Parameters**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `page` | integer | Zero-based page index (default: `0`) |
+| `size` | integer | Number of results per page (default: `20`, max: `100`) |
+| `type` | string | Filter by transaction type (optional) |
+
+**Response**
+
+```json
+{
+  "content": [
+    {
+      "id": "txn_01J8XABCDEF...",
+      "type": "DEPOSIT",
+      "amount": "25.00",
+      "balanceBefore": "20.50",
+      "balanceAfter": "45.50",
+      "description": "PayPal deposit – order 9XJ10437XK779370H",
+      "createdAt": "2024-10-15T14:32:00Z"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 47,
+  "totalPages": 3
+}
+```
+
+Each transaction object in `content[]` includes a before and after balance snapshot, giving you a full audit trail without needing to reconstruct history yourself.
+
+## Double-Entry Accounting
+
+Arena's ledger follows the double-entry accounting principle: every transaction creates **two** ledger entries — a debit on one account and a matching credit on another. You see the entries on your user account; the platform's counter-entries ensure that no value is created or destroyed.
+
+The example below shows how a $25.00 deposit is recorded on both sides of the ledger:
+
+| Entry | Account | Direction | Amount |
+|---|---|---|---|
+| 1 | User wallet (`usr_01J8X...`) | **Credit** | +$25.00 |
+| 2 | Platform PayPal liability account | **Debit** | −$25.00 |
+
+Both entries are written atomically in the same database transaction. If either write fails, neither is committed, preventing any partial or phantom balance updates.
+
+<CardGroup cols={2}>
+  <Card title="Deposits" icon="money-bill-wave" href="/wallet/deposits">
+    Learn how to fund your wallet using the two-step PayPal deposit flow.
+  </Card>
+  <Card title="PayPal Integration" icon="paypal" href="/wallet/paypal-integration">
+    Understand the full PayPal Orders API v2 integration, environments, and error handling.
+  </Card>
+</CardGroup>

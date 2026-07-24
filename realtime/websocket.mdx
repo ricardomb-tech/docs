@@ -1,0 +1,134 @@
+---
+title: "WebSocket & STOMP Real-Time Connection Guide"
+sidebarTitle: "WebSocket"
+description: "Connect to Arena's WebSocket/STOMP endpoint to receive live game state changes, match events, wallet updates, and supervision actions in real time."
+---
+
+Arena Backend provides real-time updates via WebSocket using the STOMP protocol. Connect to `/ws/arena` to subscribe to live game events, match status changes, wallet credits, and supervision actions — all pushed to your client the moment they occur on the server.
+
+## Connection
+
+The STOMP broker is available at the following endpoint:
+
+```
+wss://api.arena.gg/ws/arena
+```
+
+Use the `@stomp/stompjs` library to connect from a JavaScript or TypeScript client. Pass your JWT token in the STOMP connect headers to authenticate the session.
+
+```javascript
+import { Client } from '@stomp/stompjs';
+
+const client = new Client({
+  brokerURL: 'wss://api.arena.gg/ws/arena',
+  connectHeaders: {
+    Authorization: 'Bearer eyJhbGciOiJSUzI1NiJ9...'
+  },
+  onConnect: () => {
+    console.log('Connected to Arena WebSocket');
+  }
+});
+
+client.activate();
+```
+
+## Available Subscriptions
+
+Once connected, you can subscribe to any of the following STOMP destinations:
+
+| Destination | Description | Who Receives It |
+|---|---|---|
+| `/topic/games/{roomId}` | All events for a specific game room | Players + supervisor |
+| `/user/queue/notifications` | Personal notifications (wallet credits, sanctions, etc.) | Authenticated user only |
+| `/topic/supervision/{roomId}` | Supervision-specific events for a room | Supervisors only |
+
+## Subscribing to Game Events
+
+Subscribe to `/topic/games/{roomId}` to receive all state changes for a specific game room. Replace `{roomId}` with the actual room identifier returned when the room was created.
+
+```javascript
+client.subscribe(`/topic/games/${roomId}`, (message) => {
+  const event = JSON.parse(message.body);
+  console.log('Game event:', event.type, event.data);
+});
+```
+
+Each message body is a JSON-encoded event envelope. See the [Events Reference](/realtime/events) for the full list of event types and their payloads.
+
+## Subscribing to Personal Notifications
+
+Subscribe to `/user/queue/notifications` to receive events scoped to the authenticated user — such as wallet credits after a match win or KYC status updates.
+
+```javascript
+client.subscribe('/user/queue/notifications', (message) => {
+  const notification = JSON.parse(message.body);
+  console.log('Notification:', notification.type, notification.data);
+});
+```
+
+Because this is a user-scoped queue, STOMP routes messages only to the session that owns the JWT. No other user can receive your notifications.
+
+## Authentication
+
+Pass the JWT access token in the `connectHeaders` object when initialising the client. Arena Backend validates the token before upgrading the HTTP connection to a WebSocket.
+
+```javascript
+const client = new Client({
+  brokerURL: 'wss://api.arena.gg/ws/arena',
+  connectHeaders: {
+    Authorization: `Bearer ${accessToken}`
+  }
+});
+```
+
+Connections that omit the `Authorization` header, or that supply an expired or invalid token, are rejected with a **403 Forbidden** error before the STOMP handshake completes. Obtain a fresh access token from `POST /auth/refresh` and reconnect.
+
+## Reconnection
+
+`@stomp/stompjs` handles reconnection automatically whenever the underlying WebSocket drops. Set `reconnectDelay` (in milliseconds) to control the backoff interval between attempts.
+
+```javascript
+const client = new Client({
+  brokerURL: 'wss://api.arena.gg/ws/arena',
+  connectHeaders: {
+    Authorization: `Bearer ${accessToken}`
+  },
+  reconnectDelay: 5000, // retry every 5 seconds
+  onConnect: () => {
+    // re-subscribe here — subscriptions do not survive reconnection
+    client.subscribe(`/topic/games/${roomId}`, handleGameEvent);
+    client.subscribe('/user/queue/notifications', handleNotification);
+  }
+});
+```
+
+Re-register all subscriptions inside `onConnect` so they are restored after every reconnection, not just the first connect.
+
+## Connection Lifecycle Events
+
+Use these callbacks to react to changes in the connection state:
+
+| Callback | When It Fires |
+|---|---|
+| `onConnect` | STOMP session successfully established |
+| `onDisconnect` | Client explicitly disconnected via `client.deactivate()` |
+| `onStompError` | Broker sent a STOMP ERROR frame (e.g. bad subscription) |
+| `onWebSocketError` | Underlying WebSocket error (e.g. network failure) |
+
+```javascript
+const client = new Client({
+  brokerURL: 'wss://api.arena.gg/ws/arena',
+  onConnect: () => console.log('Connected'),
+  onDisconnect: () => console.log('Disconnected'),
+  onStompError: (frame) => console.error('STOMP error', frame.headers['message']),
+  onWebSocketError: (event) => console.error('WebSocket error', event)
+});
+```
+
+<Note>
+  Arena Backend uses Redis Pub/Sub to fan out messages across multiple server instances. Your subscriptions receive all relevant events regardless of which server handled your original HTTP connection — you never need to pin your WebSocket to a specific backend node.
+</Note>
+
+<Tip>
+  Always call `client.unsubscribe(subscriptionId)` when a player leaves a game room. Orphaned subscriptions continue to receive messages and consume memory on both the client and the broker until the session ends.
+</Tip>

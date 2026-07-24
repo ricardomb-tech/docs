@@ -1,0 +1,263 @@
+---
+title: "Deposits API — PayPal Order Create and Capture"
+sidebarTitle: "Deposits"
+description: "Fund your Arena wallet with real money via a two-step PayPal flow: create a payment order, redirect the user to approve it, then capture to credit your balance."
+---
+
+The Deposits API handles real-money funding via PayPal Orders API v2. Use it to create a payment order, redirect the user to PayPal, and capture the payment upon return. A verified KYC status is required before you can make your first deposit.
+
+---
+
+## POST /api/deposits/paypal/orders
+
+Create a PayPal payment order to initiate a deposit. On success you receive an `approvalUrl` — redirect your user there to authorize the payment on PayPal's hosted page. Once they approve, call the capture endpoint.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/deposits/paypal/orders
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.  
+**Requirement:** Your KYC status must be `VERIFIED`.
+
+### Request Body
+
+<ParamField body="amount" type="string" required>
+  The deposit amount as a decimal string. Minimum `"5.00"`, maximum `"500.00"` per transaction.
+</ParamField>
+
+<ParamField body="currency" type="string" required>
+  ISO 4217 currency code. Currently only `"USD"` is supported.
+</ParamField>
+
+<ParamField body="returnUrl" type="string" required>
+  The URL PayPal redirects the user to after they **approve** the payment. Include enough state in the URL to identify the order (e.g. append `?orderId=...`).
+</ParamField>
+
+<ParamField body="cancelUrl" type="string" required>
+  The URL PayPal redirects the user to if they **cancel** the payment on PayPal's page.
+</ParamField>
+
+### Response — 201 Created
+
+<ResponseField name="orderId" type="string">
+  The PayPal Order ID. Store this — you will need it to call the capture endpoint.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Always `"CREATED"` immediately after order creation.
+</ResponseField>
+
+<ResponseField name="approvalUrl" type="string">
+  The PayPal-hosted checkout URL. Redirect your user here to authorize the payment.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `403 Forbidden` | `KYC_NOT_VERIFIED` | Your KYC status is not `VERIFIED`. Complete identity verification first. |
+  | `400 Bad Request` | `AMOUNT_TOO_LOW` | `amount` is below the minimum of `"5.00"`. |
+  | `400 Bad Request` | `AMOUNT_TOO_HIGH` | `amount` exceeds the maximum of `"500.00"`. |
+  | `400 Bad Request` | `UNSUPPORTED_CURRENCY` | Only `"USD"` is currently supported. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/deposits/paypal/orders \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": "50.00",
+    "currency": "USD",
+    "returnUrl": "https://myapp.example.com/deposit/success",
+    "cancelUrl": "https://myapp.example.com/deposit/cancel"
+  }'
+```
+
+```json
+{
+  "orderId": "5O190258X4227845J",
+  "status": "CREATED",
+  "approvalUrl": "https://www.paypal.com/checkoutnow?token=5O190258X4227845J"
+}
+```
+
+---
+
+## POST /api/deposits/paypal/orders/{orderId}/capture
+
+Capture an approved PayPal order to complete the deposit and credit the funds to your Arena wallet. Call this endpoint after PayPal redirects the user back to your `returnUrl`.
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/deposits/paypal/orders/{orderId}/capture
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Path Parameters
+
+<ParamField path="orderId" type="string" required>
+  The PayPal Order ID returned by `POST /api/deposits/paypal/orders`.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="depositId" type="string">
+  Arena's internal deposit record ID.
+</ResponseField>
+
+<ResponseField name="orderId" type="string">
+  The PayPal Order ID that was captured.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Always `"COMPLETED"` on a successful capture.
+</ResponseField>
+
+<ResponseField name="amount" type="string">
+  The captured amount as a decimal string.
+</ResponseField>
+
+<ResponseField name="currency" type="string">
+  Currency of the captured amount (e.g. `"USD"`).
+</ResponseField>
+
+<ResponseField name="walletBalance" type="string">
+  Your updated available wallet balance after the deposit has been credited.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `404 Not Found` | `ORDER_NOT_FOUND` | No order with that ID exists for your account. |
+  | `409 Conflict` | `ALREADY_CAPTURED` | This order has already been captured and the funds credited. |
+  | `422 Unprocessable Entity` | `ORDER_NOT_APPROVED` | The user has not yet approved the payment on PayPal. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/deposits/paypal/orders/5O190258X4227845J/capture \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "depositId": "dep_01HDEP789XYZ",
+  "orderId": "5O190258X4227845J",
+  "status": "COMPLETED",
+  "amount": "50.00",
+  "currency": "USD",
+  "walletBalance": "92.75"
+}
+```
+
+---
+
+## POST /api/deposits/paypal/webhook
+
+Receive and process event notifications from PayPal. This endpoint verifies the PayPal webhook signature before processing any event data.
+
+<Note>
+  This endpoint is called by **PayPal's servers**, not by your application. You do not need to call it directly. Register it as a webhook URL in your PayPal developer dashboard.
+</Note>
+
+**Method & Path**
+```
+POST https://api.arena.gg/api/deposits/paypal/webhook
+```
+
+**Authentication:** None — PayPal signs requests with its own headers.
+
+### Required Headers (sent by PayPal)
+
+<ParamField header="PAYPAL-TRANSMISSION-ID" type="string" required>
+  Unique identifier for the transmission, used in signature verification.
+</ParamField>
+
+<ParamField header="PAYPAL-TRANSMISSION-TIME" type="string" required>
+  Timestamp of when PayPal sent the webhook.
+</ParamField>
+
+<ParamField header="PAYPAL-TRANSMISSION-SIG" type="string" required>
+  Base64-encoded signature of the payload.
+</ParamField>
+
+<ParamField header="PAYPAL-CERT-URL" type="string" required>
+  URL of the PayPal certificate used to generate the signature.
+</ParamField>
+
+### Response — 200 OK
+
+An acknowledgement response confirming the event was received.
+
+```json
+{ "received": true }
+```
+
+### Response — 400 Bad Request
+
+Returned when signature verification fails.
+
+```json
+{ "error": "SIGNATURE_VERIFICATION_FAILED" }
+```
+
+---
+
+## GET /api/deposits
+
+Retrieve your paginated deposit history, optionally filtered by status.
+
+**Method & Path**
+```
+GET https://api.arena.gg/api/deposits
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required.
+
+### Query Parameters
+
+<ParamField query="page" type="integer">
+  Zero-based page number. Defaults to `0`.
+</ParamField>
+
+<ParamField query="size" type="integer">
+  Records per page. Defaults to `20`.
+</ParamField>
+
+<ParamField query="status" type="string">
+  Filter by deposit status. One of `CREATED`, `COMPLETED`, `CANCELLED`, or `FAILED`.
+</ParamField>
+
+### Response — 200 OK
+
+Returns a paginated list of deposit records. Each record includes the `depositId`, `orderId`, `amount`, `currency`, `status`, and `createdAt` timestamp.
+
+### Example
+
+```bash
+curl "https://api.arena.gg/api/deposits?page=0&size=10&status=COMPLETED" \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "content": [
+    {
+      "depositId": "dep_01HDEP789XYZ",
+      "orderId": "5O190258X4227845J",
+      "amount": "50.00",
+      "currency": "USD",
+      "status": "COMPLETED",
+      "createdAt": "2024-06-18T10:00:00Z"
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1
+}
+```

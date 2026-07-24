@@ -1,0 +1,127 @@
+---
+title: "Developer Onboarding and Local Setup"
+sidebarTitle: "Setup"
+description: "Step-by-step guide to setting up the Arena Backend development environment locally using Java 17, Maven, Docker, and PostgreSQL."
+---
+
+This guide walks you through setting up a local Arena Backend development environment from scratch. You'll need Java 17+, Maven, Docker, and a few minutes. By the end you'll have a fully running API server connected to a local PostgreSQL database and Redis instance.
+
+## Prerequisites
+
+Make sure you have the following tools installed before you begin:
+
+| Tool | Minimum Version | Notes |
+|---|---|---|
+| Java | 17+ | OpenJDK recommended; [download here](https://adoptium.net/) |
+| Maven | 3.8+ | Used for building, testing, and running the application |
+| Docker | 20+ | Must include Docker Compose (v2) |
+| Git | Any recent | For cloning the repository |
+
+Verify your versions before proceeding:
+
+```bash
+java -version
+mvn -version
+docker compose version
+git --version
+```
+
+## Clone and Build
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Arena Backend repository and move into the project directory.
+
+    ```bash
+    git clone https://github.com/ricardomb-tech/arena-backend.git && cd arena-backend
+    ```
+  </Step>
+
+  <Step title="Copy the environment file">
+    Copy the example environment file to `.env`. You'll fill in the required values before starting the application.
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Open `.env` in your editor and set the required values. See the [Environment Variables](/developer/environment-variables) reference for details on every variable.
+  </Step>
+
+  <Step title="Start infrastructure services">
+    Start PostgreSQL and Redis using Docker Compose. This brings up only the backing services — not the application itself — so you can run the app directly with Maven for faster iteration.
+
+    ```bash
+    docker compose up -d postgres redis
+    ```
+
+    Wait a few seconds for both containers to report healthy before continuing.
+  </Step>
+
+  <Step title="Run database migrations">
+    Apply all Flyway database migrations to create the schema in your local PostgreSQL instance.
+
+    ```bash
+    mvn flyway:migrate
+    ```
+
+    Migrations are located in `src/main/resources/db/migration` and run in version order. Flyway will skip migrations that have already been applied.
+  </Step>
+
+  <Step title="Start the application">
+    Launch the Spring Boot application in development mode. Maven will compile the source, resolve dependencies, and start the embedded Tomcat server on port 8080.
+
+    ```bash
+    mvn spring-boot:run
+    ```
+
+    You should see Spring's startup banner in the logs followed by a message indicating the application started successfully.
+  </Step>
+
+  <Step title="Verify the application is running">
+    Hit the Actuator health endpoint to confirm the server is up and connected to its dependencies.
+
+    ```bash
+    curl http://localhost:8080/actuator/health
+    ```
+
+    You should receive:
+
+    ```json
+    { "status": "UP" }
+    ```
+
+    If the status is `DOWN`, check the logs for database connection errors or missing environment variables.
+  </Step>
+</Steps>
+
+## Configuration
+
+All application behaviour is controlled through environment variables. The `.env` file you copied in step 2 is loaded automatically by Docker Compose; when running with `mvn spring-boot:run`, export the variables into your shell or use a tool like [direnv](https://direnv.net/).
+
+See the [Environment Variables](/developer/environment-variables) reference for the full list of required and optional variables, including how to generate the RS256 key pair needed for JWT signing.
+
+## Running Tests
+
+Arena Backend has a layered test suite. Run it with Maven:
+
+```bash
+# Unit and integration tests
+mvn test
+
+# Full verification including integration and module tests
+mvn verify
+```
+
+The test suite includes [Spring Modulith](https://spring.io/projects/spring-modulith) module isolation tests that verify no module crosses its defined boundaries — these run as part of `mvn test` automatically.
+
+See the [Testing Guide](/developer/testing) for details on test layers, Testcontainers setup, and how to run tests for a single module.
+
+<Tip>
+  For the fastest onboarding experience, use Docker Compose to start the entire stack with a single command — no manual migration step required:
+
+  ```bash
+  docker compose up
+  ```
+
+  Flyway migrations run automatically during the application container's startup sequence. See the [Docker guide](/developer/docker) for service commands and how to rebuild after code changes.
+</Tip>

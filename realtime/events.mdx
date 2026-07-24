@@ -1,0 +1,159 @@
+---
+title: "Arena Domain Events Reference"
+sidebarTitle: "Events"
+description: "Complete reference for all WebSocket events published by Arena Backend — payloads, trigger conditions, and the subscription topic that delivers each event."
+---
+
+Arena Backend publishes domain events over WebSocket whenever significant state changes occur. This reference lists every event type, its payload shape, and which subscription topic delivers it. Pair this page with the [WebSocket Connection Guide](/realtime/websocket) to understand how to subscribe and receive these events in your client.
+
+## Event Envelope
+
+Every event — regardless of type or topic — is delivered inside a common JSON envelope. Parse the `type` field first to determine how to handle the `data` payload.
+
+```json
+{
+  "type": "GAME_STARTED",
+  "roomId": "room_01J8X...",
+  "timestamp": "2024-01-15T12:05:00Z",
+  "data": { ... }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `string` | Event type identifier (see sections below) |
+| `roomId` | `string` | The game room this event belongs to, if applicable |
+| `timestamp` | `string` | ISO 8601 UTC timestamp of when the event was emitted |
+| `data` | `object` | Event-specific payload (shape varies per type) |
+
+## Game Room Events
+
+These events are delivered to `/topic/games/{roomId}`. Subscribe once per room after joining or creating a game. Both players and the assigned supervisor receive all events on this topic.
+
+| Event Type | Trigger | `data` Fields |
+|---|---|---|
+| `ROOM_CREATED` | A new game room is created | `roomId`, `gameType`, `stakeAmount`, `creatorId` |
+| `PLAYER_JOINED` | The opposing player joins the room | `playerId`, `username` |
+| `GAME_STARTED` | Both players are present and the match begins | `startedAt` |
+| `RESULT_SUBMITTED` | A player submits their match result | `submittedBy`, `winnerId` |
+| `GAME_COMPLETED` | The final result is confirmed and payouts are processed | `winnerId`, `winnerPayout`, `loserRefund` |
+| `GAME_DISPUTED` | Both players submitted conflicting results | `disputedAt` |
+| `GAME_CANCELLED` | The room is cancelled before completion | `reason` |
+
+### Example Payloads
+
+```json ROOM_CREATED
+{
+  "type": "ROOM_CREATED",
+  "roomId": "room_01J8X...",
+  "timestamp": "2024-01-15T12:00:00Z",
+  "data": {
+    "roomId": "room_01J8X...",
+    "gameType": "FIFA_1V1",
+    "stakeAmount": 10.00,
+    "creatorId": "user_01J4A..."
+  }
+}
+```
+
+```json GAME_COMPLETED
+{
+  "type": "GAME_COMPLETED",
+  "roomId": "room_01J8X...",
+  "timestamp": "2024-01-15T12:45:00Z",
+  "data": {
+    "winnerId": "user_01J4A...",
+    "winnerPayout": 18.00,
+    "loserRefund": 0.00
+  }
+}
+```
+
+```json GAME_DISPUTED
+{
+  "type": "GAME_DISPUTED",
+  "roomId": "room_01J8X...",
+  "timestamp": "2024-01-15T12:42:00Z",
+  "data": {
+    "disputedAt": "2024-01-15T12:42:00Z"
+  }
+}
+```
+
+## Supervision Events
+
+These events are delivered to `/topic/supervision/{roomId}`. Only accounts with the `SUPERVISOR` role can subscribe to this topic. They fire when a supervisor takes action on a disputed or flagged game.
+
+| Event Type | Trigger | `data` Fields |
+|---|---|---|
+| `SUPERVISOR_JOINED` | A supervisor accepts and joins a room | `supervisorId`, `username` |
+| `RESULT_VALIDATED` | Supervisor confirms the submitted result is correct | `validatedWinnerId` |
+| `RESULT_OVERRIDDEN` | Supervisor overrides the submitted result | `newWinnerId`, `reason` |
+| `SANCTION_APPLIED` | Supervisor issues a sanction against a user | `sanctionId`, `type`, `targetUserId` |
+
+### Example Payloads
+
+```json RESULT_OVERRIDDEN
+{
+  "type": "RESULT_OVERRIDDEN",
+  "roomId": "room_01J8X...",
+  "timestamp": "2024-01-15T13:10:00Z",
+  "data": {
+    "newWinnerId": "user_01J9B...",
+    "reason": "Screenshot evidence confirmed player 2 won"
+  }
+}
+```
+
+```json SANCTION_APPLIED
+{
+  "type": "SANCTION_APPLIED",
+  "roomId": "room_01J8X...",
+  "timestamp": "2024-01-15T13:15:00Z",
+  "data": {
+    "sanctionId": "sanction_01JZC...",
+    "type": "TEMPORARY_BAN",
+    "targetUserId": "user_01J4A..."
+  }
+}
+```
+
+## Personal Notification Events
+
+These events are delivered to `/user/queue/notifications`. They are scoped to the authenticated user — only that user's session receives them. Subscribe to this queue immediately after connecting to stay informed about financial and account changes.
+
+| Event Type | Trigger | `data` Fields |
+|---|---|---|
+| `WALLET_CREDITED` | Funds are added to the user's wallet | `amount`, `type`, `newBalance` |
+| `WALLET_DEBITED` | Funds are deducted from the user's wallet | `amount`, `type`, `newBalance` |
+| `KYC_STATUS_CHANGED` | The user's KYC verification status is updated | `newStatus`, `reason` |
+| `COMPLAINT_UPDATED` | A complaint the user filed changes status | `complaintId`, `newStatus` |
+
+### Example Payloads
+
+```json WALLET_CREDITED
+{
+  "type": "WALLET_CREDITED",
+  "timestamp": "2024-01-15T12:46:00Z",
+  "data": {
+    "amount": 18.00,
+    "type": "MATCH_WIN",
+    "newBalance": 68.00
+  }
+}
+```
+
+```json KYC_STATUS_CHANGED
+{
+  "type": "KYC_STATUS_CHANGED",
+  "timestamp": "2024-01-15T09:30:00Z",
+  "data": {
+    "newStatus": "VERIFIED",
+    "reason": "Identity documents approved"
+  }
+}
+```
+
+<Note>
+  Event types are versioned. When a breaking payload change is required, Arena Backend introduces a new event type (e.g. `GAME_COMPLETED_V2`) while continuing to emit the old type until the deprecation window closes. Monitor the changelog for deprecation notices and migrate your handlers before the old type is removed.
+</Note>

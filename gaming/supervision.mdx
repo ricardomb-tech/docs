@@ -1,0 +1,145 @@
+---
+title: "Live Match Supervision and Oversight in Arena Gaming"
+sidebarTitle: "Supervision"
+description: "Supervisors monitor active matches, ensure fair play, resolve disputes in real time, and earn commissions for every game they successfully oversee."
+---
+
+Supervisors are trusted users who monitor live matches, ensure fair play, and resolve disputes in real time. When a game room requires supervision, it cannot transition from `WAITING` to `IN_PROGRESS` until a supervisor accepts the oversight request and joins the room. This gives players confidence that a neutral third party is watching the match from start to finish.
+
+## Becoming a Supervisor
+
+The `SUPERVISOR` role is assigned by a platform administrator. Once assigned, you gain access to the supervision endpoints and can see all games that are awaiting oversight. Contact your platform admin or refer to your organisation's onboarding process to request the role.
+
+<Note>
+  A supervisor cannot oversee their own games or any game in which they have a
+  financial interest. Attempting to accept supervision for such a game returns a
+  `403 Forbidden` error.
+</Note>
+
+## Viewing Games Needing Supervision
+
+Query all game rooms that are currently waiting for a supervisor using the `status` filter.
+
+```bash
+GET https://api.arena.gg/api/supervision/games?status=AWAITING_SUPERVISOR
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "content": [
+    {
+      "roomId": "room_01J8X...",
+      "gameType": "CHESS",
+      "stakeAmount": "10.00",
+      "players": ["player_one", "player_two"],
+      "commissionRate": 0.02,
+      "requestedAt": "2024-01-15T12:00:00Z"
+    }
+  ]
+}
+```
+
+Each entry shows the commission rate you will earn if you accept supervision. Review the `commissionRate` and the game details before accepting.
+
+## Accepting Supervision
+
+Accept an oversight request by calling the `accept` endpoint for the target room. Once you accept, the game room is unblocked and can start as soon as both players are ready.
+
+```bash
+POST https://api.arena.gg/api/supervision/games/{roomId}/accept
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "roomId": "room_01J8X...",
+  "supervisorId": "usr_01J8X...",
+  "status": "SUPERVISION_ACTIVE",
+  "commissionRate": 0.02,
+  "acceptedAt": "2024-01-15T12:05:00Z"
+}
+```
+
+After acceptance you begin receiving real-time updates for that room through the Arena WebSocket API.
+
+## Monitoring a Live Match
+
+Subscribe to the room's WebSocket topic to receive all game events as they happen.
+
+```
+/topic/games/{roomId}
+```
+
+Events delivered to supervisors include:
+
+| Event                    | Description                                              |
+| ------------------------ | -------------------------------------------------------- |
+| `GAME_STARTED`           | Both players confirmed, match is now in progress.        |
+| `RESULT_SUBMITTED`       | A player has submitted their result claim.               |
+| `RESULT_CONFLICT`        | Both players submitted but their results disagree.       |
+| `COMPLAINT_FILED`        | A player has filed a complaint about the match.          |
+| `GAME_COMPLETED`         | Match concluded and winnings have been distributed.      |
+
+You can see each player's result submission as soon as it arrives, allowing you to compare claims before making any ruling.
+
+## Supervisor Actions
+
+Use the following endpoints to manage a game you are supervising.
+
+| Action               | Endpoint                                                         | Notes                                          |
+| -------------------- | ---------------------------------------------------------------- | ---------------------------------------------- |
+| Accept supervision   | `POST /api/supervision/games/{roomId}/accept`                   | Unblocks room from `WAITING`                   |
+| Validate result      | `POST /api/supervision/games/{roomId}/validate-result`          | Confirms the result matches your observation   |
+| Override result      | `POST /api/supervision/games/{roomId}/override-result`          | Requires `{ "winnerId": "..." }` in the body   |
+| Apply sanction       | `POST /api/supervision/games/{roomId}/sanction`                 | See [Sanctions](/gaming/sanctions)             |
+
+### Overriding a Result
+
+When players submit conflicting results or a complaint is filed, you can override the outcome by declaring the correct winner.
+
+```bash
+POST https://api.arena.gg/api/supervision/games/{roomId}/override-result
+```
+
+```json
+{
+  "winnerId": "usr_01J8X..."
+}
+```
+
+Overriding a result immediately moves the room to `COMPLETED` and triggers automatic winnings distribution.
+
+## Viewing Your Supervised Games
+
+Retrieve a paginated list of all games you have supervised using the history endpoint.
+
+```bash
+GET https://api.arena.gg/api/supervision/games/my-history
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "content": [
+    {
+      "roomId": "room_01J8X...",
+      "gameType": "CHESS",
+      "status": "COMPLETED",
+      "commissionEarned": "0.40",
+      "supervisedAt": "2024-01-15T12:05:00Z",
+      "completedAt": "2024-01-15T14:30:00Z"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 47
+}
+```
+
+Use the standard `page` and `size` query parameters to paginate through your history.
+
+For a full breakdown of how commissions are calculated and credited, see [Commissions](/gaming/commissions).
