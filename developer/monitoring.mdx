@@ -1,0 +1,163 @@
+---
+title: "Monitoring Arena Backend with Prometheus and Grafana"
+sidebarTitle: "Monitoring"
+description: "Monitor Arena Backend via Prometheus metrics and Grafana dashboards for full observability over requests, wallet transactions, and WebSocket connections."
+---
+
+Arena Backend exposes runtime metrics via Spring Boot Actuator and Prometheus. Connect a Grafana instance to visualize request rates, error rates, wallet transaction volumes, and WebSocket connection counts. This page covers the available endpoints, key metrics, and how to wire up a Grafana dashboard.
+
+## Actuator Health Endpoint
+
+The health endpoint provides a quick, machine-readable summary of the application's operational status and the health of each connected component.
+
+```http
+GET /actuator/health
+```
+
+Example response when all components are healthy:
+
+```json
+{
+  "status": "UP",
+  "components": {
+    "db": {
+      "status": "UP",
+      "details": {
+        "database": "PostgreSQL",
+        "validationQuery": "isValid()"
+      }
+    },
+    "redis": {
+      "status": "UP"
+    },
+    "diskSpace": {
+      "status": "UP",
+      "details": {
+        "total": 107374182400,
+        "free": 52428800000,
+        "threshold": 10485760,
+        "exists": true
+      }
+    }
+  }
+}
+```
+
+When any component is degraded the top-level `status` field changes to `DOWN` or `OUT_OF_SERVICE` and the HTTP response code becomes `503`. Load balancers and orchestrators should poll this endpoint to gate traffic accordingly.
+
+## Prometheus Metrics Endpoint
+
+The Prometheus endpoint returns all application and JVM metrics in Prometheus text exposition format, ready for scraping by a Prometheus server.
+
+```http
+GET /actuator/prometheus
+```
+
+Example snippet of the response:
+
+```text
+# HELP http_server_requests_seconds Duration of HTTP server request handling
+# TYPE http_server_requests_seconds summary
+http_server_requests_seconds_count{exception="None",method="POST",outcome="SUCCESS",status="200",uri="/api/auth/login"} 1423
+http_server_requests_seconds_sum{exception="None",method="POST",outcome="SUCCESS",status="200",uri="/api/auth/login"} 14.832
+
+# HELP arena_wallet_transactions_total Total number of wallet transactions by type
+# TYPE arena_wallet_transactions_total counter
+arena_wallet_transactions_total{type="DEPOSIT"} 312.0
+arena_wallet_transactions_total{type="STAKE"} 890.0
+arena_wallet_transactions_total{type="PAYOUT"} 874.0
+
+# HELP arena_websocket_connections_active Current number of active WebSocket connections
+# TYPE arena_websocket_connections_active gauge
+arena_websocket_connections_active 47.0
+
+# HELP jvm_memory_used_bytes The amount of used memory
+# TYPE jvm_memory_used_bytes gauge
+jvm_memory_used_bytes{area="heap",id="G1 Eden Space"} 5.24288E7
+```
+
+Configure your Prometheus server to scrape this endpoint at a regular interval (typically 15–30 seconds) by adding Arena Backend to your `scrape_configs`.
+
+## Key Metrics to Monitor
+
+The following metrics are the most operationally significant for Arena Backend deployments.
+
+| Metric | Type | Description |
+|---|---|---|
+| `http_server_requests_seconds` | Summary | Request latency broken down by endpoint URI, HTTP method, and response status code |
+| `arena_wallet_transactions_total` | Counter | Running count of wallet transactions broken down by type (`DEPOSIT`, `STAKE`, `PAYOUT`) |
+| `arena_game_rooms_active` | Gauge | Number of game rooms currently in an active state |
+| `arena_websocket_connections_active` | Gauge | Number of WebSocket client connections currently open across the server |
+| `jvm_memory_used_bytes` | Gauge | JVM heap memory consumed, broken down by memory pool (`heap`, `nonheap`) |
+| `spring_data_repository_invocations_seconds` | Summary | Latency of Spring Data repository (database) calls, broken down by repository and method |
+
+## Grafana Dashboard Setup
+
+<Steps>
+  <Step title="Add Prometheus as a data source">
+    In your Grafana instance, navigate to **Connections → Data Sources → Add data source** and select **Prometheus**.
+
+    Set the URL to your Prometheus server:
+
+    ```
+    http://prometheus:9090
+    ```
+
+    Click **Save & Test** to verify Grafana can reach Prometheus.
+  </Step>
+
+  <Step title="Import the Arena Backend dashboard">
+    Navigate to **Dashboards → Import** in Grafana.
+
+    Enter the Arena Backend dashboard ID or upload the JSON definition provided by your platform operator. The dashboard includes pre-built panels for request rate, error rate, wallet throughput, active game rooms, and JVM health.
+
+    <Note>
+      Contact your platform operator for the correct Dashboard ID or the exported dashboard JSON for your deployment.
+    </Note>
+  </Step>
+
+  <Step title="Configure alerts">
+    In Grafana, set up alerting rules for the following conditions:
+
+    - **Error rate > 5%** — trigger when `rate(http_server_requests_seconds_count{outcome="SERVER_ERROR"}[5m])` exceeds 5% of total request rate
+    - **Wallet transaction failures** — alert when `arena_wallet_transactions_total{type="FAILURE"}` increments unexpectedly
+    - **WebSocket connection drops** — alert when `arena_websocket_connections_active` falls sharply within a short window
+
+    Route alerts to your team's notification channel (PagerDuty, Slack, email) via Grafana's **Alerting → Contact Points** configuration.
+  </Step>
+</Steps>
+
+## Health Check Integration
+
+For load balancers and container orchestrators, poll the health endpoint to determine whether an instance should receive traffic.
+
+```http
+GET /actuator/health
+```
+
+| Response Code | Meaning |
+|---|---|
+| `200 OK` | All components healthy — instance is ready for traffic |
+| `503 Service Unavailable` | One or more components degraded — remove from rotation |
+
+Kubernetes liveness and readiness probes can reference this endpoint directly:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /actuator/health
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /actuator/health
+    port: 8080
+  initialDelaySeconds: 15
+  periodSeconds: 5
+```
+
+<Note>
+  The `/actuator/prometheus` endpoint should be protected in production environments and not exposed on a public-facing port. Check with your platform operator for the correct credentials, network policy, or IP allowlist required to reach the metrics endpoint from your Prometheus server.
+</Note>

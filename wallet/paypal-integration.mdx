@@ -1,10 +1,10 @@
 ---
-title: "PayPal Orders API v2 Integration Guide"
+title: "PayPal Orders API v2 Integration for Arena Deposits"
 sidebarTitle: "PayPal Integration"
 description: "How Arena integrates with PayPal Orders API v2 for secure real-money deposits — covering environments, sandbox testing, order lifecycle, and errors."
 ---
 
-Arena Backend integrates with PayPal Orders API v2 for all real-money deposits. This page covers how the integration works under the hood, how to test safely in the sandbox environment, and how to handle the edge cases you are most likely to encounter in production.
+Arena integrates with PayPal Orders API v2 for all real-money deposits. This page explains how the integration works from order creation through wallet credit, how to test safely in the sandbox environment, and how to handle the edge cases you are most likely to encounter in production.
 
 ## Environments
 
@@ -25,7 +25,7 @@ Use the sandbox environment to run end-to-end deposit flows without moving real 
   <Step title="Get sandbox buyer credentials">
     Log in to the [PayPal Developer Dashboard](https://developer.paypal.com/dashboard/) and navigate to **Sandbox → Accounts**. Use one of the pre-generated buyer accounts or create a new one. Sandbox buyer accounts look like:
 
-    ```
+    ```text
     Email:    sb-buyer47xyz@personal.example.com
     Password: TestPass1234!
     ```

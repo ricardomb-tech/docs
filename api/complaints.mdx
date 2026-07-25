@@ -1,7 +1,7 @@
 ---
-title: "Complaints API — File and Track Disputes"
+title: "Complaints API — File, Track, and Resolve Disputes"
 sidebarTitle: "Complaints"
-description: "File formal disputes about game results, sanctions, or platform conduct. Track investigation progress and view resolutions assigned by supervisors to your complaints."
+description: "File formal disputes about game results, sanctions, or platform conduct. Track investigation progress and view resolutions assigned by supervisors."
 ---
 
 The Complaints API lets players file formal disputes about game results, sanctions, or platform conduct. Each complaint is assigned to a supervisor for investigation and resolution. You can track status changes in real time and view the final decision once your complaint is resolved.
@@ -17,7 +17,7 @@ The Complaints API lets players file formal disputes about game results, sanctio
 Submit a new complaint. Provide the type, the ID of the related entity (game room, sanction, etc.), a written description, and any supporting evidence.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/complaints
 ```
 
@@ -95,7 +95,7 @@ curl -X POST https://api.arena.gg/api/complaints \
 Retrieve a paginated list of all complaints you have filed, optionally filtered by status.
 
 **Method & Path**
-```
+```text
 GET https://api.arena.gg/api/complaints
 ```
 
@@ -117,7 +117,44 @@ GET https://api.arena.gg/api/complaints
 
 ### Response — 200 OK
 
-Returns a paginated list of complaint summary objects, each including `complaintId`, `type`, `status`, `relatedEntityId`, and `submittedAt`.
+<ResponseField name="content" type="array">
+  Array of complaint summary objects for the current page.
+</ResponseField>
+
+<ResponseField name="content[].complaintId" type="string">
+  Unique complaint identifier.
+</ResponseField>
+
+<ResponseField name="content[].type" type="string">
+  Complaint category: `RESULT_DISPUTE`, `SANCTION_APPEAL`, or `CONDUCT`.
+</ResponseField>
+
+<ResponseField name="content[].status" type="string">
+  Current complaint status.
+</ResponseField>
+
+<ResponseField name="content[].relatedEntityId" type="string">
+  ID of the entity the complaint relates to.
+</ResponseField>
+
+<ResponseField name="content[].submittedAt" type="string">
+  ISO 8601 timestamp of when the complaint was filed.
+</ResponseField>
+
+<ResponseField name="totalElements" type="integer">
+  Total number of complaints across all pages.
+</ResponseField>
+
+<ResponseField name="totalPages" type="integer">
+  Total number of pages available at the requested `size`.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `400 Bad Request` | `INVALID_STATUS` | The `status` query parameter is not a recognised complaint status. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
 
 ### Example
 
@@ -149,7 +186,7 @@ curl "https://api.arena.gg/api/complaints?status=OPEN&page=0&size=10" \
 Retrieve the full detail of a specific complaint, including the assigned supervisor, investigation status, and any resolution decision.
 
 **Method & Path**
-```
+```text
 GET https://api.arena.gg/api/complaints/{complaintId}
 ```
 

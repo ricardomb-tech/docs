@@ -1,0 +1,69 @@
+---
+title: "Arena Redis Pub/Sub: Multi-Instance Real-Time Messaging"
+sidebarTitle: "Redis Integration"
+description: "Arena uses Redis Pub/Sub to broadcast WebSocket events across server instances so every subscribed client receives messages reliably."
+---
+
+Arena uses Redis Pub/Sub to ensure WebSocket events reach all connected clients even when your requests hit different server instances. This page explains what that means for you as a client — and why you don't need to do anything special to benefit from it.
+
+## Why Redis Pub/Sub Matters
+
+In a horizontally scaled deployment, your WebSocket connection lands on whichever backend instance the load balancer picks. When a game event is processed — say a player submits a match result — that processing may happen on a completely different server instance than the one holding your WebSocket session.
+
+Without a coordination layer, only clients connected to the same instance that processed the event would receive it. Redis Pub/Sub solves this by acting as a shared message bus: as soon as any instance publishes an event to a topic, Redis fans it out to every other instance, which in turn delivers it to all subscribed WebSocket sessions. The result is that every client subscribed to `/topic/games/{roomId}` receives the event — regardless of which backend handled the underlying HTTP request.
+
+## What You Need to Do
+
+Nothing. Redis Pub/Sub is entirely internal to the Arena platform. You subscribe to STOMP topics as normal:
+
+```javascript
+client.subscribe(`/topic/games/${roomId}`, (message) => {
+  const event = JSON.parse(message.body);
+  console.log(event.type, event.data);
+});
+```
+
+Message delivery is guaranteed regardless of server topology. You do not need to pin your WebSocket to a specific backend node, manage server affinity, or adjust your subscription logic based on deployment scale.
+
+## Message Delivery Guarantees
+
+The following guarantees apply to all events delivered through the Arena WebSocket layer:
+
+| Guarantee | Detail |
+|---|---|
+| **At-least-once delivery** | Events are retried if delivery fails, so your client will not silently miss an event |
+| **Ordered within a topic** | Game events for a given room are delivered in the order they were emitted — later events never arrive before earlier ones for the same room |
+| **Fan-out** | All sessions subscribed to a topic receive the event — there is no round-robin or exclusive delivery |
+
+<Note>
+  At-least-once delivery means your handler may occasionally receive a duplicate event in edge-case retry scenarios. Use the `timestamp` field in the event envelope to detect and discard duplicates if idempotency matters for your use case.
+</Note>
+
+## Connection Resilience
+
+The `@stomp/stompjs` library handles WebSocket reconnection automatically. Configure a `reconnectDelay` so the client retries promptly after a network drop:
+
+```javascript
+import { Client } from '@stomp/stompjs';
+
+const client = new Client({
+  brokerURL: 'wss://api.arena.gg/ws/arena',
+  connectHeaders: {
+    Authorization: `Bearer ${accessToken}`
+  },
+  reconnectDelay: 5000, // retry after 5 seconds
+  onConnect: () => {
+    // Re-register subscriptions on every connect, not just the first
+    client.subscribe(`/topic/games/${roomId}`, handleGameEvent);
+    client.subscribe('/user/queue/notifications', handleNotification);
+  }
+});
+
+client.activate();
+```
+
+Subscriptions do not survive a WebSocket drop — they must be re-registered inside `onConnect`. By placing all `client.subscribe(...)` calls there, you guarantee they are restored after every reconnection automatically, with no extra logic required.
+
+<Note>
+  Transient issues with the Redis layer can cause brief delays in event delivery. The Arena platform uses continuous health monitoring to detect and recover from such issues automatically. If you notice an unexpected delay in events, verify your WebSocket connection is still active before assuming a data problem.
+</Note>

@@ -1,0 +1,195 @@
+---
+title: "Troubleshooting Arena Backend Integration Problems"
+sidebarTitle: "Troubleshooting"
+description: "Diagnose and fix common Arena Backend integration issues including authentication errors, KYC submissions, deposit problems, and WebSocket connectivity."
+---
+
+This guide covers the most common issues encountered when integrating with Arena Backend and how to resolve them. Each section targets a specific domain — work through the relevant accordion for your error before opening a support ticket.
+
+## Authentication Issues
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized on every request">
+    A persistent `401` usually means one of three things:
+
+    1. **Token is expired.** Access tokens have a 15-minute TTL. Check the `exp` claim in the JWT payload (decode it at [jwt.io](https://jwt.io)) and compare it to the current UTC time. If expired, call `POST /api/auth/refresh` with your refresh token to obtain a new access token.
+
+    2. **Wrong header format.** The `Authorization` header must be exactly:
+       ```http
+       Authorization: Bearer <token>
+       ```
+       Note the capital `B` in `Bearer` and the single space between `Bearer` and the token. Missing either causes rejection.
+
+    3. **Using the refresh token for API calls.** Only the `accessToken` returned from `/api/auth/login` or `/api/auth/refresh` is valid for authenticated endpoints. The `refreshToken` is solely for obtaining new access tokens and will be rejected by all other endpoints.
+  </Accordion>
+
+  <Accordion title="Refresh token rejected (TOKEN_REVOKED)">
+    Refresh tokens are **single-use**. Every time you call `POST /api/auth/refresh`, you receive a brand-new refresh token. The previous one is immediately invalidated.
+
+    Common causes of `TOKEN_REVOKED`:
+
+    - You saved the old refresh token and attempted to reuse it after already refreshing once.
+    - Two concurrent requests both tried to refresh the same token simultaneously. Only one succeeds; the other receives `TOKEN_REVOKED`, and the winning token is also invalidated as a security measure.
+
+    **Fix:** always replace your stored refresh token with the new one returned in every refresh response. Implement a token refresh mutex on the client side to prevent concurrent refresh attempts.
+  </Accordion>
+
+  <Accordion title="403 Forbidden after valid login">
+    A `403` means your token is valid but your account role does not have permission to access that endpoint. Arena Backend enforces role-based access:
+
+    | Role | Can Access |
+    |---|---|
+    | `PLAYER` | Game rooms, wallet, KYC, personal notifications |
+    | `SUPERVISOR` | Supervision endpoints, dispute resolution, sanctions |
+    | `ADMIN` | All endpoints |
+
+    If you're a `PLAYER` calling a supervision or admin endpoint, you will receive `403`. Check the endpoint's required role in the API reference and ensure your account has been granted that role. Contact your platform administrator if you need a role upgrade.
+  </Accordion>
+</AccordionGroup>
+
+## KYC Issues
+
+<AccordionGroup>
+  <Accordion title="KYC submission returns 400">
+    A `400` on `POST /api/kyc/submit` means one or more required fields are missing or malformed. Checklist:
+
+    - **All required fields present:** `firstName`, `lastName`, `dateOfBirth`, `documentType`, `documentFront`.
+    - **`documentBack` requirement:** this field is **optional** for `PASSPORT` but **required** for `NATIONAL_ID` and `DRIVER_LICENSE`. Omitting it for those types causes a `400`.
+    - **Date format:** `dateOfBirth` must be `YYYY-MM-DD` (e.g. `"1990-06-15"`). Other formats such as `DD/MM/YYYY` or Unix timestamps are not accepted.
+    - **Document URLs:** `documentFront` and `documentBack` must be valid URLs pointing to uploaded files.
+  </Accordion>
+
+  <Accordion title="KYC stuck in SUBMITTED status">
+    `SUBMITTED` means your documents are queued for manual review. Manual review typically takes **1–2 business days**.
+
+    To check current status, call:
+    ```http
+    GET /api/kyc/status
+    ```
+
+    You will also receive a `KYC_STATUS_CHANGED` event on your `/user/queue/notifications` WebSocket subscription the moment your status changes — no polling required if you have an active WebSocket connection.
+
+    If more than 3 business days have passed without a status change, contact support with your account ID.
+  </Accordion>
+</AccordionGroup>
+
+## Deposit Issues
+
+<AccordionGroup>
+  <Accordion title="PayPal order capture returns 422">
+    A `422` on `POST /api/payments/paypal/capture` means the PayPal order has not been approved by the user yet. The capture step requires user approval first.
+
+    The correct flow is:
+
+    1. `POST /api/payments/paypal/create` → receive `orderId` and `approvalUrl`
+    2. Redirect the user to `approvalUrl` to approve the payment in PayPal
+    3. After PayPal redirects back to your `returnUrl`, call `POST /api/payments/paypal/capture` with the `orderId`
+
+    Calling capture before step 2 completes will always return `422`.
+  </Accordion>
+
+  <Accordion title="Wallet balance not updated after successful capture">
+    Wallet credits are finalised by the **PayPal webhook event `PAYMENT.CAPTURE.COMPLETED`**, not by the capture API response itself. The webhook is sent from PayPal to Arena Backend asynchronously after a successful capture.
+
+    - Allow **up to 30 seconds** after a successful capture response for the webhook to arrive and for your wallet balance to update.
+    - Call `GET /api/wallet/balance` to check the current balance.
+    - If the balance is still not updated after **5 minutes**, contact support with the PayPal `orderId` so the transaction can be reconciled manually.
+  </Accordion>
+
+  <Accordion title="Deposit amount rejected">
+    Deposit amounts must meet the following requirements:
+
+    | Constraint | Value |
+    |---|---|
+    | Minimum per transaction | `$5.00` |
+    | Maximum per transaction | `$500.00` |
+    | Format | String decimal — e.g. `"25.00"` |
+
+    Passing a number (`25`) instead of a string decimal (`"25.00"`) will cause a validation error. Always stringify the amount before sending it in the request body.
+  </Accordion>
+</AccordionGroup>
+
+## Game Room Issues
+
+<AccordionGroup>
+  <Accordion title="409 Conflict when joining a room">
+    A `409` when calling `POST /api/games/rooms/{roomId}/join` means one of the following:
+
+    - **Room is full:** the room already has two players.
+    - **Room is not in WAITING status:** the game has already started, completed, been disputed, or been cancelled. Only rooms in `WAITING` status accept new players.
+    - **You created the room:** you cannot join your own room as the opposing player.
+
+    Call `GET /api/games/rooms/{roomId}` to inspect the current `status` and `playerCount` before attempting to join.
+  </Accordion>
+
+  <Accordion title="402 Payment Required when joining a room">
+    Your available wallet balance is insufficient to cover the room's stake amount. The `availableBalance` (total balance minus any locked funds) must be greater than or equal to the stake.
+
+    Check your current balances with `GET /api/wallet/balance`, then deposit additional funds via the PayPal flow before attempting to join again.
+  </Accordion>
+
+  <Accordion title="Room requires supervision but won't start">
+    If a room was created with `requiresSupervision: true`, the game cannot begin until a supervisor accepts the supervision request.
+
+    To check whether a supervisor has been assigned, call:
+    ```http
+    GET /api/supervision/games?status=AWAITING_SUPERVISOR
+    ```
+
+    If the room appears in this list, no supervisor has accepted yet. Supervisors browse open supervision requests and accept them voluntarily. If the room has been waiting for an extended period, you may cancel the room (if still in `WAITING` status) and recreate it without the supervision requirement.
+  </Accordion>
+</AccordionGroup>
+
+## WebSocket Issues
+
+<AccordionGroup>
+  <Accordion title="WebSocket connection rejected">
+    Connection rejections before the STOMP handshake completes are almost always an authentication problem. Verify:
+
+    - You are passing a valid, **non-expired** access token in the STOMP connect headers:
+      ```javascript
+      connectHeaders: {
+        Authorization: 'Bearer <accessToken>'
+      }
+      ```
+    - The token is an `accessToken`, not a `refreshToken`.
+    - The token has not exceeded its 15-minute TTL. Refresh it with `POST /api/auth/refresh` immediately before opening the WebSocket connection if needed.
+
+    Connections supplying an invalid or missing `Authorization` header are rejected with a `403 Forbidden` before the WebSocket upgrade completes.
+  </Accordion>
+
+  <Accordion title="Not receiving game events">
+    If your WebSocket connection is active but game events are not arriving, check the following:
+
+    1. **Correct topic:** game events are published to `/topic/games/{roomId}`. Confirm you are using the exact `roomId` returned from `POST /api/games/rooms` (or from `GET /api/games/rooms/{roomId}`). A typo in the room ID means you are subscribed to a topic that never receives messages.
+
+    2. **Personal notifications topic:** wallet credits, KYC updates, and other user-scoped events go to `/user/queue/notifications` — not to the game topic. Make sure you are subscribed to the right destination for the event type you expect.
+
+    3. **Subscription registered after connect:** ensure `client.subscribe(...)` is called inside `onConnect`, not before `client.activate()`. Subscriptions made before the STOMP session is established are silently dropped.
+  </Accordion>
+
+  <Accordion title="Events stop arriving mid-game">
+    WebSocket connections can drop due to network interruptions, load balancer idle timeouts, or client-side issues. When the connection drops, active subscriptions are lost.
+
+    Use `@stomp/stompjs`'s built-in reconnection to recover automatically:
+
+    ```javascript
+    const client = new Client({
+      brokerURL: 'wss://api.arena.gg/ws/arena',
+      connectHeaders: { Authorization: `Bearer ${accessToken}` },
+      reconnectDelay: 5000,
+      onConnect: () => {
+        // Always re-subscribe here so subscriptions survive reconnects
+        client.subscribe(`/topic/games/${roomId}`, handleGameEvent);
+        client.subscribe('/user/queue/notifications', handleNotification);
+      }
+    });
+    ```
+
+    With `reconnectDelay: 5000`, the client retries every 5 seconds after a drop and re-establishes all subscriptions automatically when the connection is restored.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  For issues not covered here, open a complaint via `POST /api/complaints` with `type: "CONDUCT"` and describe the technical issue in the `description` field. The support team reviews all complaint submissions.
+</Note>

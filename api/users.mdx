@@ -1,5 +1,5 @@
 ---
-title: "Users API — Profile and Account Management"
+title: "Users API — Manage Profile, Password, and Sanctions"
 sidebarTitle: "Users"
 description: "View and update your Arena account profile, change your password, check your role and KYC status, and review any sanctions applied to your account."
 ---
@@ -13,7 +13,7 @@ The Users API lets you view and update your account profile, check your role and
 Retrieve the full profile of the currently authenticated user, including their role, KYC verification status, and account timestamps.
 
 **Method & Path**
-```
+```text
 GET https://api.arena.gg/api/users/me
 ```
 
@@ -49,6 +49,12 @@ GET https://api.arena.gg/api/users/me
   ISO 8601 timestamp of when your account was last updated.
 </ResponseField>
 
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
 ### Example
 
 ```bash
@@ -75,7 +81,7 @@ curl https://api.arena.gg/api/users/me \
 Update your display name and/or email address. You may supply one or both fields. Fields you omit remain unchanged.
 
 **Method & Path**
-```
+```text
 PUT https://api.arena.gg/api/users/me
 ```
 
@@ -134,7 +140,7 @@ curl -X PUT https://api.arena.gg/api/users/me \
 Change your account password. You must supply your current password to authorize the change.
 
 **Method & Path**
-```
+```text
 PUT https://api.arena.gg/api/users/me/password
 ```
 
@@ -183,7 +189,7 @@ A `204 No Content` response confirms the password was changed. Log in again to o
 Retrieve a paginated list of all sanctions that have been applied to your account. Sanctions can include warnings, game forfeits, and temporary bans issued by supervisors.
 
 **Method & Path**
-```
+```text
 GET https://api.arena.gg/api/users/me/sanctions
 ```
 
@@ -238,6 +244,12 @@ Returns a paginated wrapper containing an array of sanction objects.
 <ResponseField name="totalPages" type="integer">
   Total number of pages available.
 </ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
 
 ### Example
 

@@ -1,5 +1,5 @@
 ---
-title: "WebSocket & STOMP Real-Time Connection Guide"
+title: "Arena WebSocket and STOMP Real-Time Connection Guide"
 sidebarTitle: "WebSocket"
 description: "Connect to Arena's WebSocket/STOMP endpoint to receive live game state changes, match events, wallet updates, and supervision actions in real time."
 ---
@@ -126,7 +126,7 @@ const client = new Client({
 ```
 
 <Note>
-  Arena Backend uses Redis Pub/Sub to fan out messages across multiple server instances. Your subscriptions receive all relevant events regardless of which server handled your original HTTP connection — you never need to pin your WebSocket to a specific backend node.
+  Arena Backend is horizontally scaled. Your WebSocket subscriptions receive all relevant events regardless of which server instance handled your original HTTP request — you never need to pin your WebSocket connection to a specific backend node. See [Redis Pub/Sub Integration](/realtime/redis-integration) for more detail on how this works.
 </Note>
 
 <Tip>

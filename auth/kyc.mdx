@@ -1,5 +1,5 @@
 ---
-title: "Identity Verification (KYC) for Arena Gaming"
+title: "Identity Verification (KYC) for Arena Real-Money Play"
 sidebarTitle: "KYC"
 description: "Complete KYC identity verification before making real-money deposits or joining paid game rooms. Learn what to submit and what to expect."
 ---
@@ -96,6 +96,11 @@ When your `kycStatus` reaches `VERIFIED`, the following platform capabilities ar
 
 If your status is `REJECTED`, inspect the `rejectionReason` field returned by `GET /api/kyc/status` to understand exactly why your documents were not accepted.
 
+```http
+GET https://api.arena.gg/api/kyc/status
+Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
+```
+
 ```json
 {
   "status": "REJECTED",
@@ -104,7 +109,32 @@ If your status is `REJECTED`, inspect the `rejectionReason` field returned by `G
 }
 ```
 
-Address the issue described in `rejectionReason` — for example, retake the photo with better lighting — then call `POST /api/kyc/submit` again with the corrected documents. Each resubmission starts a new review cycle of 1–2 business days.
+Address the issue described in `rejectionReason` — for example, retake the photo with better lighting — then call `POST /api/kyc/resubmit` with the corrected documents. The request body and field requirements are identical to the initial submission.
+
+```http
+POST https://api.arena.gg/api/kyc/resubmit
+Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
+Content-Type: multipart/form-data
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `fullName` | `string` | Your legal full name as it appears on the document |
+| `dateOfBirth` | `string` | Date of birth in `YYYY-MM-DD` format |
+| `documentType` | `string` | One of: `PASSPORT`, `NATIONAL_ID`, `DRIVER_LICENSE` |
+| `documentNumber` | `string` | The unique identifier printed on your document |
+| `documentFront` | `file` | Image of the front of your document (JPEG or PNG) |
+| `documentBack` | `file` | Image of the back of your document (required for `NATIONAL_ID` and `DRIVER_LICENSE`) |
+
+A successful resubmission returns `200 OK` with a new submission receipt and resets your `kycStatus` to `SUBMITTED`. Each resubmission starts a new review cycle of 1–2 business days.
+
+```json
+{
+  "kycSubmissionId": "kyc_01J9B...",
+  "status": "SUBMITTED",
+  "submittedAt": "2024-01-17T09:00:00Z"
+}
+```
 
 <Note>
   There is no limit on the number of resubmission attempts. However, repeated submissions of low-quality documents may result in a manual review delay. Resolve the stated reason before resubmitting.

@@ -62,7 +62,8 @@
             "group": "Real-Time",
             "pages": [
               "realtime/websocket",
-              "realtime/events"
+              "realtime/events",
+              "realtime/redis-integration"
             ]
           },
           {
@@ -71,7 +72,18 @@
               "developer/setup",
               "developer/environment-variables",
               "developer/docker",
-              "developer/testing"
+              "developer/testing",
+              "developer/monitoring",
+              "developer/security",
+              "developer/adr",
+              "developer/roadmap"
+            ]
+          },
+          {
+            "group": "Help",
+            "pages": [
+              "troubleshooting",
+              "faq"
             ]
           }
         ]

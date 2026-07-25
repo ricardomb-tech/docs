@@ -22,6 +22,14 @@ stateDiagram-v2
     CANCELLED --> [*]
 ```
 
+| State         | Description                                                                                  |
+| ------------- | -------------------------------------------------------------------------------------------- |
+| `WAITING`     | Room created, staked by the creator. Waiting for an opponent (and supervisor if required).   |
+| `IN_PROGRESS` | Opponent has joined and their stake is locked. The match is actively being played.           |
+| `COMPLETED`   | Result finalised and winnings distributed. The room is closed.                               |
+| `DISPUTED`    | Players submitted conflicting results. A supervisor is reviewing evidence.                   |
+| `CANCELLED`   | Creator cancelled while in `WAITING`. Creator's stake is returned in full.                   |
+
 ## Creating a Game Room
 
 Send a `POST` request to `/api/games/rooms` to create a new room. The `stakeAmount` is immediately locked from your wallet at the moment the room is created.
@@ -65,18 +73,101 @@ Share the `joinCode` with your opponent so they can join the room directly. The 
   returned to your wallet.
 </Note>
 
+## Listing Game Rooms
+
+Retrieve a paginated list of open game rooms. Use the `status` and `gameType` query parameters to filter results.
+
+```bash
+GET https://api.arena.gg/api/games/rooms
+```
+
+**Optional query parameters**
+
+| Parameter   | Type    | Description                                              |
+| ----------- | ------- | -------------------------------------------------------- |
+| `status`    | string  | Filter by room state, e.g. `WAITING` or `IN_PROGRESS`.  |
+| `gameType`  | string  | Filter by game type, e.g. `CHESS`.                      |
+| `page`      | integer | Page number (default `0`).                              |
+| `size`      | integer | Results per page (default `20`).                        |
+
+**Response `200 OK`**
+
+```json
+{
+  "content": [
+    {
+      "roomId": "room_01J8X...",
+      "status": "WAITING",
+      "gameType": "CHESS",
+      "stakeAmount": "10.00",
+      "creatorId": "usr_01J8X...",
+      "requiresSupervision": false,
+      "createdAt": "2024-01-15T12:00:00Z"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 5
+}
+```
+
+## Getting a Single Room
+
+Fetch full details for a specific game room by its ID.
+
+```bash
+GET https://api.arena.gg/api/games/rooms/{roomId}
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "roomId": "room_01J8X...",
+  "status": "WAITING",
+  "gameType": "CHESS",
+  "stakeAmount": "10.00",
+  "currency": "USD",
+  "creatorId": "usr_01J8X...",
+  "opponentId": null,
+  "requiresSupervision": false,
+  "supervisorId": null,
+  "joinCode": "ABC123",
+  "createdAt": "2024-01-15T12:00:00Z",
+  "startedAt": null
+}
+```
+
+A `404 Not Found` response is returned when the room does not exist or you do not have permission to view it.
+
 ## Joining a Room
 
 An opponent can join a room in two ways:
 
 - **By room ID** — `POST /api/games/rooms/{roomId}/join`
-- **By join code** — `POST /api/games/rooms/join` with `{ "joinCode": "ABC123" }` in the request body
+- **By join code** — `POST /api/games/rooms/join-by-code` with `{ "joinCode": "ABC123" }` in the request body
 
 When the opponent joins, their stake is locked from their wallet and the room transitions from `WAITING` to `IN_PROGRESS`. Both players receive an immediate real-time notification via WebSocket confirming the match has started.
+
+**Join by room ID**
 
 ```bash
 POST https://api.arena.gg/api/games/rooms/{roomId}/join
 ```
+
+**Join by code**
+
+```bash
+POST https://api.arena.gg/api/games/rooms/join-by-code
+```
+
+```json
+{
+  "joinCode": "ABC123"
+}
+```
+
+Both methods return `200 OK` with the updated room object, including `status: "IN_PROGRESS"` and the opponent's user ID.
 
 ## Submitting a Result
 
@@ -117,12 +208,12 @@ POST https://api.arena.gg/api/games/rooms/{roomId}/result
 
 When a result is finalised, the platform automatically calculates and distributes winnings. The table below shows an example for a standard two-player game with a 10% platform fee and an optional 2% supervisor commission.
 
-| Item                         | Amount  |
-| ---------------------------- | ------- |
-| Each player stakes           | $10.00  |
-| Total pot                    | $20.00  |
-| Platform fee (10%)           | $2.00   |
-| Supervisor commission (2%)   | $0.40   |
+| Item                         | Amount     |
+| ---------------------------- | ---------- |
+| Each player stakes           | $10.00     |
+| Total pot                    | $20.00     |
+| Platform fee (10%)           | $2.00      |
+| Supervisor commission (2%)   | $0.40      |
 | **Winner receives**          | **$17.60** |
 
 Supervisor commission only applies when `requiresSupervision` is `true` on the room. See [Commissions](/gaming/commissions) for full details.
@@ -139,9 +230,9 @@ A successful cancellation returns `204 No Content` and your staked amount is ret
 
 <Note>
   Rooms with `requiresSupervision: true` will not transition from `WAITING` to
-  `IN_PROGRESS` until a supervisor accepts the oversight request. See{" "}
-  <a href="/gaming/supervision">Supervision</a> for details on how supervisors
-  join a game room.
+  `IN_PROGRESS` until a supervisor accepts the oversight request. See
+  [Supervision](/gaming/supervision) for details on how supervisors join a game
+  room.
 </Note>
 
 <CardGroup cols={2}>

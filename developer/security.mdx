@@ -1,0 +1,60 @@
+---
+title: "Security Best Practices for Arena Backend Integrations"
+sidebarTitle: "Security"
+description: "Security practices for Arena Backend integrations: JWT token handling, PayPal webhook verification, credential management, and role-based access control."
+---
+
+Building a secure integration with Arena Backend requires careful handling of JWT tokens, PayPal webhook signatures, and sensitive user data. This page covers the most important security practices for client applications and server-side integrations that consume the Arena Backend API.
+
+## Token Security
+
+Arena Backend issues short-lived access tokens (15 minutes by default) and longer-lived refresh tokens (7 days by default). How you store and handle these tokens is critical to the security of your integration.
+
+- **Store access tokens in memory only** — never persist access tokens in `localStorage`, `sessionStorage`, or cookies. Keep them in JavaScript memory for the lifetime of the page session.
+- **Store refresh tokens in HttpOnly cookies or secure server-side storage** — an `HttpOnly` cookie cannot be read by JavaScript, which protects against XSS exfiltration. If your architecture uses a backend-for-frontend (BFF), store refresh tokens server-side.
+- **Never log or expose tokens in URLs** — tokens in query strings appear in server logs, browser history, and referrer headers. Always pass tokens in the `Authorization` header.
+- **Rotate refresh tokens on every use** — the Arena Backend API already enforces single-use refresh tokens. If your integration caches a refresh token and retries silently, ensure you always store and use the latest token returned by the `/auth/refresh` endpoint.
+- **Use HTTPS for all API calls** — never send tokens over plain HTTP. Enforce HTTPS at the infrastructure level and reject mixed-content requests in your frontend.
+
+## Webhook Security
+
+PayPal webhook verification is handled internally by Arena Backend before any business logic executes. However, if your integration forwards webhook payloads to your own systems for event processing, you must apply the same protections.
+
+- **Always verify the `PayPal-Transmission-Sig` header** — do not process a webhook payload without first validating the HMAC-SHA256 signature against the raw request body and your PayPal webhook ID.
+- **Use the idempotency key (`PAYPAL-TRANSMISSION-ID`)** — store processed transmission IDs and reject duplicates. PayPal may redeliver the same event on transient failures; processing it twice can cause double-credits or duplicate records.
+- **Reject requests without required PayPal headers** — at minimum, require `PayPal-Transmission-Id`, `PayPal-Transmission-Time`, `PayPal-Cert-Url`, and `PayPal-Transmission-Sig`. Drop any request missing these headers without processing.
+
+## API Key and Credential Management
+
+For server-side integrations that require credentials (PayPal client ID/secret, database passwords, JWT signing keys), follow these practices:
+
+- **Never hardcode credentials in source code** — hardcoded secrets are easily exposed through version control history or accidental publication of code.
+- **Use environment variables or a secrets manager** — inject secrets at runtime via environment variables, or use a dedicated secrets manager such as AWS Secrets Manager, HashiCorp Vault, or GCP Secret Manager.
+- **Rotate credentials regularly** — establish a rotation schedule. Use separate credentials for each environment rather than sharing a single set across sandbox and production.
+- **Use separate credentials for sandbox and production** — `PAYPAL_MODE=sandbox` and `PAYPAL_MODE=live` require distinct client IDs, client secrets, and webhook IDs. Mixing environments can result in real money being processed on test data or vice versa.
+
+## Sensitive Data Handling
+
+Arena Backend processes personally identifiable information (PII) as part of the KYC verification flow, and financial data as part of the wallet and payments flow. Treat all of this data with care.
+
+- **Do not cache or store KYC document images in your frontend** — KYC documents contain government-issued identification. Fetch them only when needed and never write them to `localStorage`, `IndexedDB`, or any client-side cache.
+- **Treat `rejectionReason` as sensitive** — KYC rejection reasons may contain details derived from identity document inspection. Do not log this field or include it in error reports without scrubbing.
+- **Wallet balances and transaction history are private** — your UI must only display financial data to the authenticated user who owns that wallet. Do not derive balance or transaction information from URL parameters or shared state that other users could manipulate.
+
+## Role-Based Access
+
+Arena Backend enforces three primary roles. Assign roles only to the users who require them, and never request elevated permissions in a client application if they are not needed for the integration.
+
+| Role | Permissions |
+|---|---|
+| `PLAYER` | Create and join game rooms, make deposits, view own wallet balance and transaction history, file complaints |
+| `SUPERVISOR` | All PLAYER permissions, plus: accept supervision assignments, validate game results, apply sanctions, view earned commissions |
+| `ADMIN` | All permissions including platform management, user administration, and configuration — not exposed in the public API |
+
+<Warning>
+  Never use the `ADMIN` role in client applications or expose ADMIN-level credentials to end users. ADMIN operations are reserved for platform operators and are not part of the public integration surface.
+</Warning>
+
+<Tip>
+  Implement rate limiting on your client side for login attempts — for example, exponential backoff after 3 consecutive failures. The Arena Backend API already returns `429 Too Many Requests` after repeated failed attempts, but applying client-side limiting prevents unnecessary requests from reaching the server and improves the user experience.
+</Tip>

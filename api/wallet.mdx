@@ -1,7 +1,7 @@
 ---
-title: "Wallet API — Balance and Transaction History"
+title: "Wallet API — Check Balance and Transaction History"
 sidebarTitle: "Wallet"
-description: "Check your available and locked real-money balance and browse your full transaction history, including deposits, wagers, winnings, commissions, and refunds."
+description: "Check your available and locked real-money balance and browse your full transaction history, including deposits, wagers, winnings, and refunds."
 ---
 
 The Wallet API gives you visibility into your available balance, locked funds, and a full history of every credit and debit recorded in the double-entry ledger. Funds are locked when you join a game room and released or redistributed once the result is confirmed.
@@ -17,7 +17,7 @@ The Wallet API gives you visibility into your available balance, locked funds, a
 Retrieve your current wallet balance, broken down into available funds, locked funds held against active wagers, and their combined total.
 
 **Method & Path**
-```
+```text
 GET https://api.arena.gg/api/wallet/balance
 ```
 
@@ -45,6 +45,12 @@ GET https://api.arena.gg/api/wallet/balance
   ISO 4217 currency code. Currently always `"USD"`.
 </ResponseField>
 
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
 ### Example
 
 ```bash
@@ -69,7 +75,7 @@ curl https://api.arena.gg/api/wallet/balance \
 Retrieve a paginated, reverse-chronological list of all transactions recorded against your wallet. You can filter by transaction type to focus on a specific category of movement.
 
 **Method & Path**
-```
+```text
 GET https://api.arena.gg/api/wallet/transactions
 ```
 
@@ -145,6 +151,13 @@ GET https://api.arena.gg/api/wallet/transactions
 <ResponseField name="totalPages" type="integer">
   Total number of pages available at the requested `size`.
 </ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `400 Bad Request` | `INVALID_TYPE` | The `type` query parameter is not a recognised transaction type. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
 
 ### Example — All transactions
 

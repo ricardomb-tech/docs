@@ -69,7 +69,7 @@ After acceptance you begin receiving real-time updates for that room through the
 
 Subscribe to the room's WebSocket topic to receive all game events as they happen.
 
-```
+```text
 /topic/games/{roomId}
 ```
 
@@ -96,6 +96,34 @@ Use the following endpoints to manage a game you are supervising.
 | Override result      | `POST /api/supervision/games/{roomId}/override-result`          | Requires `{ "winnerId": "..." }` in the body   |
 | Apply sanction       | `POST /api/supervision/games/{roomId}/sanction`                 | See [Sanctions](/gaming/sanctions)             |
 
+### Validating a Result
+
+When both players submit the same winner and you have observed the match directly, confirm the result matches your observation. This formally endorses the agreed outcome and immediately triggers winnings distribution.
+
+```bash
+POST https://api.arena.gg/api/supervision/games/{roomId}/validate-result
+```
+
+**Request body**
+
+```json
+{
+  "winnerId": "usr_01J8X...",
+  "notes": "Both players submitted consistent results; outcome matches my observation."
+}
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "roomId": "room_01J8X...",
+  "status": "COMPLETED",
+  "validatedAt": "2024-01-15T14:25:00Z",
+  "winnerId": "usr_01J8X..."
+}
+```
+
 ### Overriding a Result
 
 When players submit conflicting results or a complaint is filed, you can override the outcome by declaring the correct winner.
@@ -104,8 +132,21 @@ When players submit conflicting results or a complaint is filed, you can overrid
 POST https://api.arena.gg/api/supervision/games/{roomId}/override-result
 ```
 
+**Request body**
+
 ```json
 {
+  "winnerId": "usr_01J8X..."
+}
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "roomId": "room_01J8X...",
+  "status": "COMPLETED",
+  "overriddenAt": "2024-01-15T14:28:00Z",
   "winnerId": "usr_01J8X..."
 }
 ```

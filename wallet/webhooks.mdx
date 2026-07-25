@@ -1,5 +1,5 @@
 ---
-title: "PayPal Webhook Verification and Processing"
+title: "PayPal Webhook Verification, Events, and Idempotency"
 sidebarTitle: "Webhooks"
 description: "Arena verifies every PayPal webhook with HMAC-SHA256 before crediting wallets. Learn the supported events, verification steps, and idempotency guarantees."
 ---
@@ -10,7 +10,7 @@ PayPal sends signed webhook events to confirm payments and notify you of status 
 
 Arena exposes a dedicated endpoint that PayPal calls directly. You do not call this endpoint yourself.
 
-```
+```http
 POST /api/deposits/paypal/webhook
 ```
 
@@ -45,7 +45,7 @@ Arena reconstructs and compares the PayPal signature on every incoming webhook b
   <Step title="Reconstruct the expected signature">
     Arena builds the signature input string by concatenating the configured webhook ID, the transmission ID, the transmission time, and the raw request body — then computes an HMAC-SHA256 digest:
 
-    ```
+    ```text
     HMAC-SHA256(webhookId + transmissionId + transmissionTime + rawBody)
     ```
 

@@ -1,0 +1,52 @@
+---
+title: "Arena Backend Platform Roadmap and Upcoming Features"
+sidebarTitle: "Roadmap"
+description: "Arena Backend roadmap: wallet withdrawals, automated KYC, tournament mode, additional payment methods, and the long-term microservice extraction plan."
+---
+
+This roadmap outlines planned improvements and new features for Arena Backend. Items are organized by phase and subject to change based on platform growth, user feedback, and business priorities.
+
+## Current Status (v1.0)
+
+The following features are live and available in the current release:
+
+- **JWT RS256 authentication** — access and refresh token issuance with asymmetric signing
+- **Manual KYC verification** — document upload and admin review workflow
+- **Double-entry wallet ledger** — immutable financial records with full audit trail
+- **PayPal deposits** — real-money deposits via PayPal Orders API v2 with HMAC webhook verification
+- **Game rooms with stake management** — room creation, player joining, and stake reservation
+- **Live supervision** — supervisor assignment, result validation, and sanction application
+- **Commission tracking** — automatic commission calculation for supervisors
+- **Complaints system** — structured dispute filing and resolution workflow
+- **WebSocket/STOMP real-time** — live event push to connected clients
+- **Redis Pub/Sub fan-out** — cross-instance real-time message delivery for horizontal scaling
+
+## Near Term (v1.1 — v1.2)
+
+| Feature | Description |
+|---|---|
+| **Wallet Withdrawals** | Players can withdraw available funds directly to their verified PayPal account, subject to KYC and minimum withdrawal thresholds |
+| **Multi-Game Support** | Framework extensions to support additional game types beyond the initial offering, with configurable result schemas and validation rules |
+| **Automated KYC** | Integration with a third-party KYC provider for automated document verification, reducing manual review time from hours to seconds |
+| **Enhanced Supervisor Dashboard** | Structured supervision queue with filtering by game type, stake range, and assignment status; support for bulk assignment |
+| **Webhook Delivery Retry** | Guaranteed at-least-once delivery for platform-emitted webhooks with configurable retry backoff and dead-letter handling |
+
+## Medium Term (v2.x)
+
+| Feature | Description |
+|---|---|
+| **Tournament Mode** | Multi-round bracket tournaments with automated progression, seeding, and prize pool distribution at tournament completion |
+| **Additional Payment Methods** | Credit and debit card processing and bank transfer support via a secondary payment provider, reducing dependency on PayPal availability |
+| **Mobile Push Notifications** | Opt-in push notifications for game invitations, match results, wallet deposits, and KYC status changes |
+| **Supervisor Ratings** | Player feedback mechanism for supervision quality; aggregated ratings visible on supervisor profiles |
+| **API Rate Limiting Tiers** | Differentiated request rate limits based on integration tier, with higher limits available for verified platform partners |
+
+## Long Term
+
+Arena Backend's modular monolith architecture is intentionally designed as a stepping stone rather than a permanent constraint. Each bounded context — Identity, Wallet, Payments, Gaming, Supervision, Complaints — is already a distinct Spring Modulith module with enforced boundaries and a well-defined public API.
+
+As individual domains reach scale thresholds that justify the operational overhead of independent deployment, they can be extracted into standalone services. Because each module communicates only through its public interface, this extraction can happen one module at a time without changing the API surface that integrators depend on. The Wallet and Payments modules are the most likely candidates for early extraction, given the independent scaling and compliance requirements of financial processing.
+
+<Note>
+  Roadmap items are not commitments and timelines are not guaranteed. Contact your platform operator for confirmed delivery timelines, early access to beta features, or to submit feature requests.
+</Note>

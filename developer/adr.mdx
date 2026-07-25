@@ -1,0 +1,129 @@
+---
+title: "Architecture Decision Records for Arena Backend Platform"
+sidebarTitle: "ADRs"
+description: "Key architectural decisions in Arena Backend — modular monolith, JWT RS256 signing, double-entry ledger, PayPal Orders API v2, and Redis Pub/Sub fan-out."
+---
+
+Architecture Decision Records (ADRs) document the key technical choices made during Arena Backend's design. Understanding these decisions helps integrators make informed choices about their own implementations and explains why the platform behaves the way it does in specific scenarios.
+
+<AccordionGroup>
+  <Accordion title="ADR-001: Modular Monolith with Spring Modulith">
+    **Status:** Accepted
+
+    **Context**
+
+    The platform needed clear domain boundaries and the ability to scale development teams independently across domains (Identity, Wallet, Payments, Gaming, Supervision, Complaints). However, deploying multiple independent microservices from day one would add significant operational overhead — service discovery, inter-service networking, distributed tracing, and independent deployment pipelines — without sufficient user scale to justify that complexity at launch.
+
+    **Decision**
+
+    Build Arena Backend as a Modular Monolith using [Spring Modulith](https://spring.io/projects/spring-modulith). Each bounded context is implemented as a distinct Spring module with enforced dependency rules. Modules may only communicate through well-defined public APIs; direct access to another module's internal types is a compile-time and test-time violation.
+
+    The six core modules are:
+    - **Identity** — authentication, authorization, KYC, user management
+    - **Wallet** — double-entry ledger, balance queries, transaction history
+    - **Payments** — PayPal Orders API integration, webhook handling
+    - **Gaming** — game room lifecycle, stake management, result submission
+    - **Supervision** — supervisor assignment, result validation, sanctions
+    - **Complaints** — dispute filing, resolution workflow, complaint history
+
+    **Consequences**
+
+    - Single deployable artifact — simpler CI/CD, no service mesh required
+    - Module boundaries are enforced at compile and test time via `@ApplicationModuleTest`
+    - Clear extraction path: when any module reaches a scale threshold, it can be promoted to an independent service without changing its public API surface
+    - All modules share a single database — inter-module queries are simpler but the database becomes a coupling point if extraction is needed later
+  </Accordion>
+
+  <Accordion title="ADR-002: JWT RS256 over HS256">
+    **Status:** Accepted
+
+    **Context**
+
+    Authentication tokens need to be verifiable by downstream services — including potential future microservices and third-party integrations — without requiring those services to share a symmetric secret key. With HMAC-SHA256 (HS256), any service that can verify a token can also forge one, which is a significant security risk in a multi-service or third-party context.
+
+    **Decision**
+
+    Use RS256 (asymmetric RSA signing) for all JWT tokens. The private key is held exclusively by the Identity module and is used to sign tokens at issuance. The corresponding public key can be distributed freely and is used by any service or client that needs to verify a token's authenticity.
+
+    Key material is managed via `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH` environment variables. See the [Environment Variables](/developer/environment-variables) reference for key generation instructions.
+
+    **Consequences**
+
+    - Any service can verify tokens by holding only the public key — no secret sharing required
+    - Better suited for distributed verification and third-party integrations
+    - Token payloads are slightly larger than HS256 equivalents due to the RSA signature size
+    - Key rotation requires generating a new key pair and a coordinated rollout with a brief dual-validation window; this is operationally more involved than rotating a symmetric secret
+  </Accordion>
+
+  <Accordion title="ADR-003: Double-Entry Ledger for Wallet">
+    **Status:** Accepted
+
+    **Context**
+
+    Arena Backend processes real-money transactions. A naive implementation that stores the current balance as a single mutable field is prone to race conditions under concurrent updates, provides no audit trail, and makes it difficult to reconstruct historical states or investigate discrepancies.
+
+    **Decision**
+
+    Implement a double-entry accounting ledger. Every financial event — deposit, stake, payout, commission, refund — creates exactly two immutable ledger entries: one debit and one credit. The entries are written in a single database transaction and are never updated or deleted after creation.
+
+    The current balance of any wallet is derived by summing the ledger entries for that wallet, not by reading a stored balance field. This means the balance is always provably consistent with the full transaction history.
+
+    **Consequences**
+
+    - Complete, immutable audit trail for every financial movement on the platform
+    - Impossible to lose money in the system — every debit has a corresponding credit
+    - Balance derivation queries are slightly more complex (aggregate over ledger entries) but can be optimized with materialized views or caching if needed
+    - Financial integrity is guaranteed even if a bug causes an incorrect entry, because the error is visible in the ledger and can be corrected with a compensating entry
+  </Accordion>
+
+  <Accordion title="ADR-004: PayPal Orders API v2">
+    **Status:** Accepted
+
+    **Context**
+
+    The platform requires a real-money deposit mechanism that supports a broad range of payment methods, handles fraud detection, and provides reliable server-side payment confirmation. Building direct card processing would require PCI DSS Level 1 compliance, which is disproportionate for an initial platform launch.
+
+    **Decision**
+
+    Integrate with [PayPal Orders API v2](https://developer.paypal.com/docs/api/orders/v2/) as the sole initial deposit mechanism. Payment flow:
+
+    1. Arena Backend creates a PayPal Order and returns the approval URL to the client
+    2. The user is redirected to PayPal to authorize payment
+    3. PayPal sends a webhook event to Arena Backend upon successful capture
+    4. Arena Backend verifies the webhook signature using HMAC-SHA256 and the configured `PAYPAL_WEBHOOK_ID`
+    5. On successful verification, the Wallet module credits the user's account
+
+    **Consequences**
+
+    - Broad payment method support through PayPal (PayPal balance, credit/debit cards, bank transfers depending on region)
+    - No direct card data handling — reduces PCI compliance scope significantly
+    - Server-side webhook verification ensures payment confirmation is authoritative and not spoofable by clients
+    - Platform availability is partially dependent on PayPal's uptime and API stability
+    - Sandbox (`PAYPAL_MODE=sandbox`) and live (`PAYPAL_MODE=live`) environments require separate credentials
+  </Accordion>
+
+  <Accordion title="ADR-005: Redis Pub/Sub for Real-Time Fan-out">
+    **Status:** Accepted
+
+    **Context**
+
+    Arena Backend uses WebSocket/STOMP connections to push real-time game events to connected clients. WebSocket connections are sticky to a specific server instance — a client connected to Instance A cannot receive a message sent directly from Instance B. In a horizontally scaled deployment, game events processed on one instance must reliably reach clients connected to any other instance.
+
+    **Decision**
+
+    Use Redis Pub/Sub as a lightweight message bus for cross-instance event fan-out. When a game event occurs on any instance:
+
+    1. The event is published to a Redis channel
+    2. All server instances subscribe to the channel and receive the event
+    3. Each instance forwards the event to any WebSocket clients it holds that are subscribed to the relevant topic
+
+    Redis is already a required infrastructure dependency (used for caching and session data), so adding Pub/Sub does not introduce a new component.
+
+    **Consequences**
+
+    - WebSocket connections can be distributed across any number of server instances without sticky routing requirements
+    - Redis becomes a required infrastructure dependency — its availability directly affects real-time features
+    - Pub/Sub delivery is best-effort and not persistent: if a server instance is down when an event is published, it will not receive that event on reconnect
+    - For use cases requiring durable event delivery (audit logs, replay), the database is the source of truth — Redis is only the real-time fan-out mechanism
+  </Accordion>
+</AccordionGroup>

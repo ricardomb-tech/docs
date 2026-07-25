@@ -1,7 +1,7 @@
 ---
-title: "Deposits API — PayPal Order Create and Capture"
+title: "Deposits API — PayPal Order Creation and Capture"
 sidebarTitle: "Deposits"
-description: "Fund your Arena wallet with real money via a two-step PayPal flow: create a payment order, redirect the user to approve it, then capture to credit your balance."
+description: "Fund your Arena wallet via a two-step PayPal flow: create a payment order, redirect the user to approve it, then capture to credit your balance."
 ---
 
 The Deposits API handles real-money funding via PayPal Orders API v2. Use it to create a payment order, redirect the user to PayPal, and capture the payment upon return. A verified KYC status is required before you can make your first deposit.
@@ -13,7 +13,7 @@ The Deposits API handles real-money funding via PayPal Orders API v2. Use it to 
 Create a PayPal payment order to initiate a deposit. On success you receive an `approvalUrl` — redirect your user there to authorize the payment on PayPal's hosted page. Once they approve, call the capture endpoint.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/deposits/paypal/orders
 ```
 
@@ -91,7 +91,7 @@ curl -X POST https://api.arena.gg/api/deposits/paypal/orders \
 Capture an approved PayPal order to complete the deposit and credit the funds to your Arena wallet. Call this endpoint after PayPal redirects the user back to your `returnUrl`.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/deposits/paypal/orders/{orderId}/capture
 ```
 
@@ -167,7 +167,7 @@ Receive and process event notifications from PayPal. This endpoint verifies the 
 </Note>
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/deposits/paypal/webhook
 ```
 
@@ -214,7 +214,7 @@ Returned when signature verification fails.
 Retrieve your paginated deposit history, optionally filtered by status.
 
 **Method & Path**
-```
+```text
 GET https://api.arena.gg/api/deposits
 ```
 
@@ -236,7 +236,48 @@ GET https://api.arena.gg/api/deposits
 
 ### Response — 200 OK
 
-Returns a paginated list of deposit records. Each record includes the `depositId`, `orderId`, `amount`, `currency`, `status`, and `createdAt` timestamp.
+<ResponseField name="content" type="array">
+  Array of deposit records for the current page.
+</ResponseField>
+
+<ResponseField name="content[].depositId" type="string">
+  Arena's internal deposit record ID.
+</ResponseField>
+
+<ResponseField name="content[].orderId" type="string">
+  The PayPal Order ID associated with this deposit.
+</ResponseField>
+
+<ResponseField name="content[].amount" type="string">
+  Deposit amount as a decimal string.
+</ResponseField>
+
+<ResponseField name="content[].currency" type="string">
+  ISO 4217 currency code (e.g. `"USD"`).
+</ResponseField>
+
+<ResponseField name="content[].status" type="string">
+  Deposit status. One of `CREATED`, `COMPLETED`, `CANCELLED`, or `FAILED`.
+</ResponseField>
+
+<ResponseField name="content[].createdAt" type="string">
+  ISO 8601 timestamp of when the deposit record was created.
+</ResponseField>
+
+<ResponseField name="totalElements" type="integer">
+  Total number of deposit records across all pages.
+</ResponseField>
+
+<ResponseField name="totalPages" type="integer">
+  Total number of pages available at the requested `size`.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `400 Bad Request` | `INVALID_STATUS` | The `status` query parameter is not a recognised deposit status. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
 
 ### Example
 

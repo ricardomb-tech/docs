@@ -1,7 +1,7 @@
 ---
-title: "Supervision API — Monitor and Manage Matches"
+title: "Supervision API — Monitor, Validate, and Sanction"
 sidebarTitle: "Supervision"
-description: "Supervisor-role endpoints for accepting game oversight assignments, validating or overriding match results, applying player sanctions, and tracking commission earnings."
+description: "Supervisor-role endpoints: accept game oversight, validate or override match results, apply player sanctions, and track commission earnings on Arena."
 ---
 
 The Supervision API is for users with the `SUPERVISOR` role. Use it to find games needing oversight, accept supervision assignments, validate match results, and track commission earnings. All endpoints in this section require a valid access token belonging to a `SUPERVISOR`-role account.
@@ -17,7 +17,7 @@ The Supervision API is for users with the `SUPERVISOR` role. Use it to find game
 List game rooms that are available for supervision or that you are currently overseeing, optionally filtered by status.
 
 **Method & Path**
-```
+```text
 GET https://api.arena.gg/api/supervision/games
 ```
 
@@ -39,7 +39,48 @@ GET https://api.arena.gg/api/supervision/games
 
 ### Response — 200 OK
 
-Returns a paginated list of game room summaries including `roomId`, `gameType`, `stakeAmount`, `status`, `supervisorId`, and `createdAt`.
+<ResponseField name="content" type="array">
+  Array of game room summary objects for the current page.
+</ResponseField>
+
+<ResponseField name="content[].roomId" type="string">
+  Unique room identifier.
+</ResponseField>
+
+<ResponseField name="content[].gameType" type="string">
+  Game being played in this room.
+</ResponseField>
+
+<ResponseField name="content[].stakeAmount" type="string">
+  Per-player stake as a decimal string.
+</ResponseField>
+
+<ResponseField name="content[].status" type="string">
+  Current room supervision status.
+</ResponseField>
+
+<ResponseField name="content[].supervisorId" type="string">
+  User ID of the assigned supervisor. `null` if not yet assigned.
+</ResponseField>
+
+<ResponseField name="content[].createdAt" type="string">
+  ISO 8601 creation timestamp.
+</ResponseField>
+
+<ResponseField name="totalElements" type="integer">
+  Total number of rooms matching the applied filters.
+</ResponseField>
+
+<ResponseField name="totalPages" type="integer">
+  Total number of pages available at the requested `size`.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `403 Forbidden` | `FORBIDDEN` | Your account does not have the `SUPERVISOR` role. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
 
 ### Example
 
@@ -72,7 +113,7 @@ curl "https://api.arena.gg/api/supervision/games?status=AWAITING_SUPERVISOR&page
 Accept a supervision assignment for a game room. Once you accept, you are the designated supervisor for that room and responsible for validating its result.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/supervision/games/{roomId}/accept
 ```
 
@@ -107,6 +148,8 @@ POST https://api.arena.gg/api/supervision/games/{roomId}/accept
   |--------|------|-------------|
   | `409 Conflict` | `ALREADY_HAS_SUPERVISOR` | Another supervisor has already accepted this room. |
   | `404 Not Found` | `ROOM_NOT_FOUND` | No room with that ID exists. |
+  | `403 Forbidden` | `FORBIDDEN` | Your account does not have the `SUPERVISOR` role. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
 </Accordion>
 
 ### Example
@@ -132,7 +175,7 @@ curl -X POST https://api.arena.gg/api/supervision/games/room_01HROOM456XYZ/accep
 Confirm the winner of a supervised match. Once validated, the game moves to `COMPLETED`, winnings are distributed to the winner, and your commission is credited to your wallet.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/supervision/games/{roomId}/validate-result
 ```
 
@@ -152,7 +195,31 @@ POST https://api.arena.gg/api/supervision/games/{roomId}/validate-result
 
 ### Response — 200 OK
 
-Returns the updated game room object with `status: "COMPLETED"` and result details. Your commission is reflected in `GET /api/supervision/commissions`.
+<ResponseField name="roomId" type="string">
+  The room whose result was validated.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Always `"COMPLETED"` on success.
+</ResponseField>
+
+<ResponseField name="winnerId" type="string">
+  User ID of the confirmed winner.
+</ResponseField>
+
+<ResponseField name="completedAt" type="string">
+  ISO 8601 timestamp of when the room was completed.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `403 Forbidden` | `NOT_ASSIGNED_SUPERVISOR` | You are not the supervisor assigned to this room. |
+  | `409 Conflict` | `ROOM_NOT_IN_PROGRESS` | The room is not currently `IN_PROGRESS`. |
+  | `400 Bad Request` | `INVALID_WINNER` | The `confirmedWinnerId` is not a participant in this room. |
+  | `404 Not Found` | `ROOM_NOT_FOUND` | No room with that ID exists. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
 
 ### Example
 
@@ -179,7 +246,7 @@ curl -X POST https://api.arena.gg/api/supervision/games/room_01HROOM456XYZ/valid
 Override the submitted or validated result with a different outcome. Use this when new evidence contradicts the initial result. Winnings are redistributed accordingly.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/supervision/games/{roomId}/override-result
 ```
 
@@ -207,7 +274,31 @@ POST https://api.arena.gg/api/supervision/games/{roomId}/override-result
 
 ### Response — 200 OK
 
-Returns the updated game room with the corrected result and `status: "COMPLETED"`.
+<ResponseField name="roomId" type="string">
+  The room whose result was overridden.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Always `"COMPLETED"` on success.
+</ResponseField>
+
+<ResponseField name="winnerId" type="string">
+  User ID of the new confirmed winner.
+</ResponseField>
+
+<ResponseField name="overriddenAt" type="string">
+  ISO 8601 timestamp of when the override was applied.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `403 Forbidden` | `FORBIDDEN` | Your account does not have the `SUPERVISOR` role. |
+  | `400 Bad Request` | `INVALID_WINNER` | The `winnerId` is not a participant in this room. |
+  | `400 Bad Request` | `VALIDATION_ERROR` | The `reason` field is missing or empty. |
+  | `404 Not Found` | `ROOM_NOT_FOUND` | No room with that ID exists. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
 
 ### Example
 
@@ -237,7 +328,7 @@ curl -X POST https://api.arena.gg/api/supervision/games/room_01HROOM456XYZ/overr
 Apply a sanction to a player in a supervised game room. Sanctions range from formal warnings to temporary bans.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/supervision/games/{roomId}/sanction
 ```
 
@@ -277,6 +368,16 @@ POST https://api.arena.gg/api/supervision/games/{roomId}/sanction
   Always `"APPLIED"` on success.
 </ResponseField>
 
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `400 Bad Request` | `INVALID_TARGET` | `targetUserId` is not a participant in this room. |
+  | `400 Bad Request` | `INVALID_SANCTION_TYPE` | `sanctionType` is not one of the accepted values. |
+  | `403 Forbidden` | `FORBIDDEN` | Your account does not have the `SUPERVISOR` role. |
+  | `404 Not Found` | `ROOM_NOT_FOUND` | No room with that ID exists. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
 ### Example
 
 ```bash
@@ -305,7 +406,7 @@ curl -X POST https://api.arena.gg/api/supervision/games/room_01HROOM456XYZ/sanct
 Retrieve a summary and itemised list of commission earnings from your supervised matches, optionally filtered by date range.
 
 **Method & Path**
-```
+```text
 GET https://api.arena.gg/api/supervision/commissions
 ```
 
@@ -336,8 +437,40 @@ GET https://api.arena.gg/api/supervision/commissions
 </ResponseField>
 
 <ResponseField name="commissions" type="array">
-  Paginated array of individual commission records, each containing `roomId`, `amount`, `rate`, and `creditedAt`.
+  Paginated array of individual commission records.
 </ResponseField>
+
+<ResponseField name="commissions[].roomId" type="string">
+  The room this commission was earned from.
+</ResponseField>
+
+<ResponseField name="commissions[].amount" type="string">
+  Commission amount earned as a decimal string.
+</ResponseField>
+
+<ResponseField name="commissions[].rate" type="string">
+  Commission rate applied (e.g. `"0.05"` for 5%).
+</ResponseField>
+
+<ResponseField name="commissions[].creditedAt" type="string">
+  ISO 8601 timestamp of when the commission was credited to your wallet.
+</ResponseField>
+
+<ResponseField name="totalElements" type="integer">
+  Total number of commission records across all pages.
+</ResponseField>
+
+<ResponseField name="totalPages" type="integer">
+  Total number of pages available at the requested `size`.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `400 Bad Request` | `INVALID_DATE_RANGE` | The `from` date is after the `to` date. |
+  | `403 Forbidden` | `FORBIDDEN` | Your account does not have the `SUPERVISOR` role. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
 
 ### Example
 
@@ -375,7 +508,7 @@ curl "https://api.arena.gg/api/supervision/commissions?from=2024-06-01&to=2024-0
 Retrieve a paginated history of all game rooms you have supervised, including completed and overridden results.
 
 **Method & Path**
-```
+```text
 GET https://api.arena.gg/api/supervision/games/my-history
 ```
 
@@ -393,7 +526,48 @@ GET https://api.arena.gg/api/supervision/games/my-history
 
 ### Response — 200 OK
 
-Returns a paginated list of game rooms you supervised, each including `roomId`, `gameType`, `stakeAmount`, `status`, `winnerId`, and `completedAt`.
+<ResponseField name="content" type="array">
+  Array of supervised game room records for the current page.
+</ResponseField>
+
+<ResponseField name="content[].roomId" type="string">
+  Unique room identifier.
+</ResponseField>
+
+<ResponseField name="content[].gameType" type="string">
+  Game that was played in this room.
+</ResponseField>
+
+<ResponseField name="content[].stakeAmount" type="string">
+  Per-player stake as a decimal string.
+</ResponseField>
+
+<ResponseField name="content[].status" type="string">
+  Final room status (typically `COMPLETED`).
+</ResponseField>
+
+<ResponseField name="content[].winnerId" type="string">
+  User ID of the confirmed winner.
+</ResponseField>
+
+<ResponseField name="content[].completedAt" type="string">
+  ISO 8601 timestamp of when the room was completed.
+</ResponseField>
+
+<ResponseField name="totalElements" type="integer">
+  Total number of supervised rooms across all pages.
+</ResponseField>
+
+<ResponseField name="totalPages" type="integer">
+  Total number of pages available at the requested `size`.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `403 Forbidden` | `FORBIDDEN` | Your account does not have the `SUPERVISOR` role. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
 
 ### Example
 

@@ -1,5 +1,5 @@
 ---
-title: "Register and Create Your Arena Account"
+title: "Register Your Arena Account and Manage Your Profile"
 sidebarTitle: "Registration"
 description: "Create an Arena account by providing a username, email, and password. Learn the required fields and what happens immediately after registration."
 ---
@@ -87,3 +87,91 @@ Every Arena account is assigned a role that controls what actions it can perform
 | `ADMIN` | Full platform management access, including user administration and configuration. Assigned internally. |
 
 You cannot self-assign the `SUPERVISOR` or `ADMIN` roles — contact the Arena team if your use case requires elevated permissions.
+
+---
+
+## Managing Your Profile
+
+Once registered and logged in, you can retrieve and update your account details using the profile endpoints below.
+
+### Get your profile
+
+Call `GET /api/users/me` to fetch the currently authenticated user's profile.
+
+```http
+GET https://api.arena.gg/api/users/me
+Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
+```
+
+```json
+{
+  "id": "usr_01J8X...",
+  "username": "player_one",
+  "email": "player@example.com",
+  "roles": ["PLAYER"],
+  "kycStatus": "PENDING",
+  "createdAt": "2024-01-15T10:30:00Z"
+}
+```
+
+### Update your profile
+
+Call `PUT /api/users/me` to update your display username or other editable profile fields.
+
+```http
+PUT https://api.arena.gg/api/users/me
+Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
+Content-Type: application/json
+```
+
+```json
+{
+  "username": "champion_one"
+}
+```
+
+A successful update returns `200 OK` with the updated profile object.
+
+### Change your password
+
+Call `PUT /api/users/me/password` to change your account password. You must supply your current password for verification before the new password is accepted.
+
+```http
+PUT https://api.arena.gg/api/users/me/password
+Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
+Content-Type: application/json
+```
+
+```json
+{
+  "currentPassword": "SecurePass123!",
+  "newPassword": "NewSecurePass456!"
+}
+```
+
+A successful password change returns `204 No Content`. All existing refresh tokens are revoked automatically — you will need to log in again with your new password.
+
+### Check your sanctions
+
+Call `GET /api/users/me/sanctions` to retrieve any active sanctions applied to your account. Sanctions can restrict specific platform actions such as joining game rooms.
+
+```http
+GET https://api.arena.gg/api/users/me/sanctions
+Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
+```
+
+```json
+{
+  "sanctions": [
+    {
+      "id": "sanc_01J8X...",
+      "type": "GAME_BAN",
+      "reason": "Rule violation in match room_01HXK9A2B3C4D5E6F7G8H9I0J1",
+      "issuedAt": "2024-01-15T12:00:00Z",
+      "expiresAt": "2024-01-22T12:00:00Z"
+    }
+  ]
+}
+```
+
+An empty `sanctions` array means your account has no active restrictions. If a sanction is blocking an action, the relevant endpoint will return a `403 Forbidden` response with a `SANCTION_ACTIVE` error code.

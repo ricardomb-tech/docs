@@ -1,7 +1,7 @@
 ---
-title: "Authentication API — Register, Login, Refresh"
+title: "Authentication API — Register, Login, Refresh & Logout"
 sidebarTitle: "Auth"
-description: "Register accounts, validate credentials, and manage RS256-signed JWT access and refresh tokens. Covers register, login, token refresh, and logout endpoints."
+description: "Register accounts, validate credentials, and manage RS256-signed JWT access and refresh tokens for the Arena Skill Gaming platform."
 ---
 
 The Auth API provides endpoints for account creation, credential validation, and token management. All tokens are RS256-signed JWTs. Access tokens expire after 15 minutes (`expiresIn: 900`); use the refresh endpoint to obtain a new pair without re-entering credentials.
@@ -13,7 +13,7 @@ The Auth API provides endpoints for account creation, credential validation, and
 Create a new Arena player account. On success the account is created with a `kycStatus` of `PENDING` — complete identity verification through the [KYC API](/api/kyc) before depositing or joining paid game rooms.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/auth/register
 ```
 
@@ -90,7 +90,7 @@ curl -X POST https://api.arena.gg/api/auth/register \
 Authenticate with your email and password to receive an access token and a refresh token.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/auth/login
 ```
 
@@ -126,6 +126,7 @@ POST https://api.arena.gg/api/auth/login
   | Status | Code | Description |
   |--------|------|-------------|
   | `401 Unauthorized` | `INVALID_CREDENTIALS` | Email or password is incorrect. |
+  | `400 Bad Request` | `VALIDATION_ERROR` | One or more required fields are missing or malformed. |
 </Accordion>
 
 ### Example
@@ -155,7 +156,7 @@ curl -X POST https://api.arena.gg/api/auth/login \
 Exchange a valid refresh token for a new access token and refresh token pair.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/auth/refresh
 ```
 
@@ -192,6 +193,7 @@ POST https://api.arena.gg/api/auth/refresh
   |--------|------|-------------|
   | `401 Unauthorized` | `TOKEN_INVALID` | The refresh token is malformed or does not exist. |
   | `401 Unauthorized` | `TOKEN_REVOKED` | The refresh token has already been used or was explicitly revoked by logout. |
+  | `400 Bad Request` | `VALIDATION_ERROR` | `refreshToken` field missing from request body. |
 </Accordion>
 
 ### Example
@@ -220,7 +222,7 @@ curl -X POST https://api.arena.gg/api/auth/refresh \
 Revoke the supplied refresh token, ending the session. The access token remains technically valid until its natural expiry — discard it client-side immediately after calling this endpoint.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/auth/logout
 ```
 

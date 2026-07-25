@@ -1,7 +1,7 @@
 ---
-title: "Authenticate with Arena Backend API"
+title: "Authentication Overview: Arena Backend JWT RS256 Guide"
 sidebarTitle: "Overview"
-description: "Arena Backend uses JWT RS256 bearer tokens. Learn how to register, log in, and pass tokens to every protected endpoint."
+description: "Arena Backend secures every endpoint with JWT RS256 bearer tokens. Learn how to register, log in, refresh credentials, and authorize every API request."
 ---
 
 Arena Backend secures every protected endpoint with **JWT RS256 bearer tokens**. When you register and log in, the API issues a short-lived access token and a longer-lived refresh token. Include the access token in the `Authorization: Bearer <token>` header on every request that requires authentication.

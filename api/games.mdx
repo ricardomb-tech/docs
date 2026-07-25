@@ -1,7 +1,7 @@
 ---
-title: "Games API — Rooms, Joining, and Results"
+title: "Games API — Create Rooms, Join, and Submit Results"
 sidebarTitle: "Games"
-description: "Create competitive game rooms, join open matches, submit and confirm results, and manage the full real-money game lifecycle from stake lock to winnings distribution."
+description: "Create competitive game rooms, join open matches, start games, submit results, and manage the full real-money game lifecycle from stake lock to winnings."
 ---
 
 The Games API manages the full lifecycle of competitive game rooms — from creation and joining to result submission and winnings distribution. When you join a room your stake is locked in your wallet and released or redistributed once a result is confirmed.
@@ -13,7 +13,7 @@ The Games API manages the full lifecycle of competitive game rooms — from crea
 Create a new game room. The creator's stake is locked immediately upon creation. Other players can find and join the room until it reaches capacity or you delete it.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/games/rooms
 ```
 
@@ -72,6 +72,16 @@ POST https://api.arena.gg/api/games/rooms
   ISO 8601 timestamp of room creation.
 </ResponseField>
 
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `403 Forbidden` | `KYC_NOT_VERIFIED` | Your KYC status is not `VERIFIED`. |
+  | `402 Payment Required` | `INSUFFICIENT_BALANCE` | Your available balance is less than `stakeAmount`. |
+  | `400 Bad Request` | `UNSUPPORTED_CURRENCY` | Only `"USD"` is currently supported. |
+  | `400 Bad Request` | `VALIDATION_ERROR` | One or more fields are missing or invalid. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
 ### Example
 
 ```bash
@@ -106,7 +116,7 @@ curl -X POST https://api.arena.gg/api/games/rooms \
 List game rooms with optional filtering by status and game type. Use this to discover open rooms to join.
 
 **Method & Path**
-```
+```text
 GET https://api.arena.gg/api/games/rooms
 ```
 
@@ -132,7 +142,52 @@ GET https://api.arena.gg/api/games/rooms
 
 ### Response — 200 OK
 
-Returns a paginated list of game room summary objects.
+<ResponseField name="content" type="array">
+  Array of game room summary objects for the current page.
+</ResponseField>
+
+<ResponseField name="content[].roomId" type="string">
+  Unique room identifier.
+</ResponseField>
+
+<ResponseField name="content[].status" type="string">
+  Current room status (`WAITING`, `IN_PROGRESS`, `COMPLETED`, or `DISPUTED`).
+</ResponseField>
+
+<ResponseField name="content[].gameType" type="string">
+  Game being played in this room.
+</ResponseField>
+
+<ResponseField name="content[].stakeAmount" type="string">
+  Per-player stake as a decimal string.
+</ResponseField>
+
+<ResponseField name="content[].creatorId" type="string">
+  User ID of the room creator.
+</ResponseField>
+
+<ResponseField name="content[].requiresSupervision" type="boolean">
+  Whether a supervisor is required for this room.
+</ResponseField>
+
+<ResponseField name="content[].createdAt" type="string">
+  ISO 8601 creation timestamp.
+</ResponseField>
+
+<ResponseField name="totalElements" type="integer">
+  Total number of rooms matching the applied filters.
+</ResponseField>
+
+<ResponseField name="totalPages" type="integer">
+  Total number of pages available at the requested `size`.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `400 Bad Request` | `INVALID_STATUS` | The `status` query parameter is not a recognised room status. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
 
 ### Example
 
@@ -166,7 +221,7 @@ curl "https://api.arena.gg/api/games/rooms?status=WAITING&gameType=FIFA_24&page=
 Retrieve full details for a specific game room, including the player list, current status, and supervisor assignment.
 
 **Method & Path**
-```
+```text
 GET https://api.arena.gg/api/games/rooms/{roomId}
 ```
 
@@ -208,6 +263,13 @@ GET https://api.arena.gg/api/games/rooms/{roomId}
   ISO 8601 creation timestamp.
 </ResponseField>
 
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `404 Not Found` | `ROOM_NOT_FOUND` | No room with that ID exists. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
 ### Example
 
 ```bash
@@ -237,7 +299,7 @@ curl https://api.arena.gg/api/games/rooms/room_01HROOM456XYZ \
 Join an existing game room by its ID. Your stake is locked from your available wallet balance immediately. Once all required players have joined, the room transitions to `IN_PROGRESS`.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/games/rooms/{roomId}/join
 ```
 
@@ -271,6 +333,8 @@ POST https://api.arena.gg/api/games/rooms/{roomId}/join
   | `409 Conflict` | `NOT_WAITING` | The room is no longer in `WAITING` status. |
   | `402 Payment Required` | `INSUFFICIENT_BALANCE` | Your available balance is less than the room's `stakeAmount`. |
   | `403 Forbidden` | `KYC_NOT_VERIFIED` | Your KYC status is not `VERIFIED`. |
+  | `404 Not Found` | `ROOM_NOT_FOUND` | No room with that ID exists. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
 </Accordion>
 
 ### Example
@@ -298,7 +362,7 @@ curl -X POST https://api.arena.gg/api/games/rooms/room_01HROOM456XYZ/join \
 Join a private or public game room using its short join code instead of the full room ID. Useful for sharing rooms with friends.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/games/rooms/join-by-code
 ```
 
@@ -312,7 +376,28 @@ POST https://api.arena.gg/api/games/rooms/join-by-code
 
 ### Response — 200 OK
 
-Same response shape as `POST /api/games/rooms/{roomId}/join`.
+<ResponseField name="roomId" type="string">
+  The room you joined.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Updated room status. `"IN_PROGRESS"` once all players have joined.
+</ResponseField>
+
+<ResponseField name="players" type="array">
+  Updated array of players in the room.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `404 Not Found` | `INVALID_JOIN_CODE` | No room matching that join code was found. |
+  | `409 Conflict` | `ROOM_FULL` | The room already has the required number of players. |
+  | `409 Conflict` | `NOT_WAITING` | The room is no longer in `WAITING` status. |
+  | `402 Payment Required` | `INSUFFICIENT_BALANCE` | Your available balance is less than the room's `stakeAmount`. |
+  | `403 Forbidden` | `KYC_NOT_VERIFIED` | Your KYC status is not `VERIFIED`. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
 
 ### Example
 
@@ -336,12 +421,70 @@ curl -X POST https://api.arena.gg/api/games/rooms/join-by-code \
 
 ---
 
+## POST /api/games/rooms/{roomId}/start
+
+Explicitly mark a room as started, transitioning it from `WAITING` to `IN_PROGRESS`. Only the room creator can call this endpoint. Use this when you want to start play without waiting for all player slots to fill automatically.
+
+**Method & Path**
+```text
+POST https://api.arena.gg/api/games/rooms/{roomId}/start
+```
+
+**Authentication:** `Authorization: Bearer <accessToken>` required. You must be the room creator.
+
+### Path Parameters
+
+<ParamField path="roomId" type="string" required>
+  The ID of the game room to start.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="roomId" type="string">
+  The room that was started.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Always `"IN_PROGRESS"` on success.
+</ResponseField>
+
+<ResponseField name="startedAt" type="string">
+  ISO 8601 timestamp of when the room was started.
+</ResponseField>
+
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `403 Forbidden` | `NOT_CREATOR` | You did not create this room. |
+  | `409 Conflict` | `NOT_WAITING` | The room is not in `WAITING` status and cannot be started. |
+  | `409 Conflict` | `INSUFFICIENT_PLAYERS` | The room does not have enough players to start. |
+  | `404 Not Found` | `ROOM_NOT_FOUND` | No room with that ID exists. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
+### Example
+
+```bash
+curl -X POST https://api.arena.gg/api/games/rooms/room_01HROOM456XYZ/start \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json
+{
+  "roomId": "room_01HROOM456XYZ",
+  "status": "IN_PROGRESS",
+  "startedAt": "2024-06-20T14:10:00Z"
+}
+```
+
+---
+
 ## POST /api/games/rooms/{roomId}/result
 
 Submit the match result for a completed game. Both players independently submit their view of the result. If both agree, the result is auto-confirmed. If they disagree, the room enters `DISPUTED` status for supervisor review.
 
 **Method & Path**
-```
+```text
 POST https://api.arena.gg/api/games/rooms/{roomId}/result
 ```
 
@@ -377,6 +520,16 @@ POST https://api.arena.gg/api/games/rooms/{roomId}/result
   One of `PENDING_CONFIRMATION` (awaiting the other player's submission), `CONFIRMED` (both players agree), or `DISPUTED` (players submitted conflicting results).
 </ResponseField>
 
+<Accordion title="Error responses">
+  | Status | Code | Description |
+  |--------|------|-------------|
+  | `403 Forbidden` | `NOT_A_PLAYER` | You are not a participant in this room. |
+  | `409 Conflict` | `ALREADY_SUBMITTED` | You have already submitted a result for this room. |
+  | `409 Conflict` | `ROOM_NOT_IN_PROGRESS` | The room is not currently `IN_PROGRESS`. |
+  | `404 Not Found` | `ROOM_NOT_FOUND` | No room with that ID exists. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
+</Accordion>
+
 ### Example
 
 ```bash
@@ -404,7 +557,7 @@ curl -X POST https://api.arena.gg/api/games/rooms/room_01HROOM456XYZ/result \
 Cancel and delete a game room. You can only delete a room you created, and only while it is in `WAITING` status. Your locked stake is returned to your available balance immediately.
 
 **Method & Path**
-```
+```text
 DELETE https://api.arena.gg/api/games/rooms/{roomId}
 ```
 
@@ -426,6 +579,7 @@ An empty body confirms the room was deleted and your stake has been returned to 
   | `403 Forbidden` | `NOT_CREATOR` | You did not create this room. |
   | `409 Conflict` | `NOT_WAITING` | The room is already `IN_PROGRESS` or `COMPLETED` and cannot be deleted. |
   | `404 Not Found` | `ROOM_NOT_FOUND` | No room with that ID exists. |
+  | `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid access token. |
 </Accordion>
 
 ### Example

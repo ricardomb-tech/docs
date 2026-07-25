@@ -1,5 +1,5 @@
 ---
-title: "Fund Your Wallet with a PayPal Deposit"
+title: "Add Funds to Your Arena Wallet with a PayPal Deposit"
 sidebarTitle: "Deposits"
 description: "Fund your Arena wallet in two steps: create a PayPal order to get an approval URL, then capture the payment to instantly credit your available balance."
 ---
@@ -121,3 +121,43 @@ Track the lifecycle of a deposit using the `status` field returned on the deposi
 | `COMPLETED` | Payment captured and wallet credit confirmed |
 | `FAILED` | Capture attempt failed or PayPal declined the payment |
 | `CANCELLED` | Player cancelled on PayPal, or the order expired before capture |
+
+## View Your Deposit History
+
+Retrieve a paginated list of your past deposits to check the status of a recent payment or review your funding history.
+
+```bash
+GET /api/deposits
+```
+
+**Query Parameters**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `page` | integer | Zero-based page index (default: `0`) |
+| `size` | integer | Number of results per page (default: `20`, max: `100`) |
+| `status` | string | Filter by deposit status (optional) — e.g. `COMPLETED`, `FAILED` |
+
+**Response**
+
+```json
+{
+  "content": [
+    {
+      "depositId": "dep_01J8X...",
+      "orderId": "9XJ10437XK779370H",
+      "status": "COMPLETED",
+      "amount": "25.00",
+      "currency": "USD",
+      "createdAt": "2024-10-15T14:30:00Z",
+      "completedAt": "2024-10-15T14:32:00Z"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 12,
+  "totalPages": 1
+}
+```
+
+Each deposit record includes the associated `orderId` so you can cross-reference with a specific PayPal order. All monetary values are returned as decimal strings.

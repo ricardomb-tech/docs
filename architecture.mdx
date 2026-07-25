@@ -1,5 +1,5 @@
 ---
-title: "Arena Backend Platform Architecture"
+title: "Arena Backend Platform Architecture and Module Design"
 sidebarTitle: "Architecture"
 description: "Explore Arena Backend's modular monolith design built on Spring Modulith and Domain-Driven Design, with clear bounded contexts ready to scale."
 ---
@@ -17,33 +17,33 @@ Arena Backend is a **Modular Monolith** built with [Spring Modulith](https://spr
 The platform is divided into six bounded contexts. Each module owns its data, exposes a public API facade, and publishes events when its state changes.
 
 <CardGroup cols={2}>
-  <Card title="Identity & KYC" icon="user-shield">
+  <Card title="Identity & KYC" icon="user-shield" href="/auth/overview">
     Manages user accounts, authentication credentials, role assignments, and
     manual identity verification workflows. No real-money play is permitted
     until a KYC agent approves the submitted documents.
   </Card>
-  <Card title="Wallet" icon="wallet">
+  <Card title="Wallet" icon="wallet" href="/wallet/overview">
     Maintains a **double-entry ledger** ensuring every debit has a matching
     credit. Exposes balance queries, internal transfers between players, and
     transaction history. The ledger is the source of truth for all funds on
     the platform.
   </Card>
-  <Card title="Payments" icon="credit-card">
+  <Card title="Payments" icon="credit-card" href="/wallet/deposits">
     Integrates with the **PayPal Orders API v2** to handle the full deposit
     lifecycle: order creation, buyer approval redirect, webhook processing, and
     automatic balance crediting. Also manages withdrawal requests.
   </Card>
-  <Card title="Gaming" icon="gamepad">
+  <Card title="Gaming" icon="gamepad" href="/gaming/game-lifecycle">
     Orchestrates game rooms from creation through match completion. Handles
     player joins, entry-fee escrow, result submission, and prize distribution
     back to the Wallet module.
   </Card>
-  <Card title="Supervision" icon="eye">
+  <Card title="Supervision" icon="eye" href="/gaming/supervision">
     Provides live match monitoring for platform supervisors. Tracks in-progress
     matches, calculates platform commissions, and flags anomalous results for
     manual review.
   </Card>
-  <Card title="Complaints" icon="flag">
+  <Card title="Complaints" icon="flag" href="/api/complaints">
     Allows players to file disputes against match results. Routes cases to
     supervisors, tracks resolution status, and triggers corrective wallet
     adjustments when a dispute is upheld.
@@ -58,7 +58,7 @@ The platform is divided into six bounded contexts. Each module owns its data, ex
 |---|---|
 | **Application Framework** | Java 21 + Spring Boot 3 |
 | **Modularity** | Spring Modulith |
-| **Database** | PostgreSQL 16 + Flyway migrations |
+| **Database** | PostgreSQL 16 |
 | **Caching & Messaging** | Redis (Pub/Sub + Cache) |
 | **Real-Time Transport** | WebSocket / STOMP |
 | **Authentication** | JWT RS256 (asymmetric key pair) |

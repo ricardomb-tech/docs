@@ -1,0 +1,173 @@
+---
+title: "Frequently Asked Questions: Arena Backend Integration"
+sidebarTitle: "FAQ"
+description: "Frequently asked questions about Arena Backend covering identity verification, payments, game rules, supervision commissions, and technical integration."
+---
+
+Answers to the most common questions about Arena Backend, covering accounts, real-money play, game rules, supervision, and technical integration. If your question isn't answered here, consult the relevant guide or open a support ticket.
+
+## Accounts & Identity
+
+<AccordionGroup>
+  <Accordion title="Do I need to verify my identity to play?">
+    Yes. KYC (Know Your Customer) verification is required before depositing real money or joining paid game rooms. Accounts without completed KYC can browse available rooms and explore the platform, but cannot stake funds or participate in real-money matches.
+
+    Submit your documents via `POST /api/kyc/submit`. Once approved, your KYC status changes to `VERIFIED` and all features become available.
+  </Accordion>
+
+  <Accordion title="How long does KYC verification take?">
+    Manual review typically takes **1–2 business days**. You will receive a `KYC_STATUS_CHANGED` notification on your `/user/queue/notifications` WebSocket subscription as soon as your status changes — no polling required.
+
+    You can also check your current status at any time with `GET /api/kyc/status`.
+  </Accordion>
+
+  <Accordion title="Can I change my username or email?">
+    Yes. Use `PUT /api/users/me` to update your profile, including `username` and `email`. Email changes may require re-verification depending on how your deployment is configured — check with your platform operator.
+  </Accordion>
+
+  <Accordion title="What happens if my KYC is rejected?">
+    You will receive a `KYC_STATUS_CHANGED` notification with `newStatus: "REJECTED"` and a `reason` field explaining the issue (for example, an unclear document scan or a name mismatch).
+
+    You can resubmit corrected documents via `POST /api/kyc/resubmit`. Common fixes include uploading higher-quality document images and ensuring all four corners of the document are visible.
+  </Accordion>
+</AccordionGroup>
+
+## Money & Payments
+
+<AccordionGroup>
+  <Accordion title="What payment methods are supported?">
+    PayPal is the supported deposit method. Support for additional payment methods is on the roadmap. Contact your platform operator for the latest availability in your region.
+  </Accordion>
+
+  <Accordion title="Are there deposit limits?">
+    Yes. The following limits apply per transaction:
+
+    | Limit | Amount |
+    |---|---|
+    | Minimum deposit | `$5.00` |
+    | Maximum deposit | `$500.00` |
+
+    Amounts must be provided as string decimals (e.g. `"25.00"`, not `25`).
+  </Accordion>
+
+  <Accordion title="When do winnings appear in my wallet?">
+    Winnings are credited immediately after the game result is confirmed — either when both players agree on the outcome or when a supervisor validates the result. The transaction appears as type `WINNING` in your transaction history (`GET /api/wallet/transactions`).
+
+    You also receive a `WALLET_CREDITED` notification on `/user/queue/notifications` the moment the credit is applied.
+  </Accordion>
+
+  <Accordion title="What is the platform fee?">
+    The platform retains **10%** of the total pot. If a supervisor is assigned, an additional **2%** commission is paid to the supervisor from the pot.
+
+    **Example — two players each stake $10.00 ($20.00 total pot):**
+
+    | Scenario | Winner receives |
+    |---|---|
+    | No supervision | `$18.00` ($20.00 × 90%) |
+    | With supervision | `$17.60` ($20.00 × 88%) |
+
+    The supervisor receives `$0.40` (2% of $20.00) in the supervised scenario.
+  </Accordion>
+
+  <Accordion title="What is the locked balance?">
+    When you join a game room, your stake amount is moved from your `availableBalance` into your `lockedBalance`. Locked funds cannot be used for other deposits or game entries until the current game concludes.
+
+    Once the game finishes, locked funds are released as one of:
+    - **Winnings** — credited to your available balance if you win
+    - **Refund** — returned to your available balance if the game is cancelled
+    - **Commission** — a portion transferred to the supervisor's wallet if supervised
+  </Accordion>
+</AccordionGroup>
+
+## Gaming
+
+<AccordionGroup>
+  <Accordion title="Can I cancel a game room I created?">
+    Yes, as long as the room is still in `WAITING` status (meaning no opponent has joined yet). Call:
+
+    ```
+    DELETE /api/games/rooms/{roomId}
+    ```
+
+    Your staked funds are returned to your available balance immediately. Once an opponent has joined and the room moves to `IN_PROGRESS`, cancellation is no longer available through the standard API.
+  </Accordion>
+
+  <Accordion title="What happens if both players submit different results?">
+    The room enters `DISPUTED` status. From here:
+
+    - **If a supervisor is assigned:** the supervisor reviews any evidence (screenshots, etc.) and either validates one player's result or overrides both with their own determination. You receive a `RESULT_VALIDATED` or `RESULT_OVERRIDDEN` event on the supervision topic.
+    - **If no supervisor is assigned:** file a complaint via `POST /api/complaints` with `type: "RESULT_DISPUTE"`. The support team investigates and resolves the dispute manually.
+  </Accordion>
+
+  <Accordion title="Is supervision mandatory?">
+    No. Rooms can be created with `requiresSupervision: false`, in which case the game proceeds without a supervisor. However, supervised games include built-in dispute resolution — if results conflict, the supervisor resolves the dispute without requiring a formal complaint.
+
+    For high-stakes or competitive matches, supervision is strongly recommended.
+  </Accordion>
+
+  <Accordion title="What games are supported?">
+    The platform supports configurable game types. The available game types depend on your specific deployment configuration. Contact your platform operator for the list of active game types in your environment.
+  </Accordion>
+</AccordionGroup>
+
+## Supervision & Commissions
+
+<AccordionGroup>
+  <Accordion title="How do I become a supervisor?">
+    The `SUPERVISOR` role is assigned by a platform administrator — it cannot be self-assigned. Contact support or your platform operator to apply. Supervisors are expected to be familiar with the game rules and the dispute resolution process before being approved.
+  </Accordion>
+
+  <Accordion title="When is my commission paid?">
+    Commission is credited to your supervisor wallet immediately when a supervised game concludes and the final result is confirmed. You receive a `WALLET_CREDITED` notification on `/user/queue/notifications` when the credit is applied.
+
+    For disputed games, commission is held in escrow until the dispute is resolved. Once you issue a final ruling (`RESULT_VALIDATED` or `RESULT_OVERRIDDEN`), commission is released automatically.
+  </Accordion>
+
+  <Accordion title="Can I supervise my own games?">
+    No. Supervisors cannot supervise any game in which they are a participant or have a financial interest. The platform enforces this restriction at the API level — attempts to accept supervision for a room where you are a player will be rejected.
+  </Accordion>
+</AccordionGroup>
+
+## Technical
+
+<AccordionGroup>
+  <Accordion title="What is the base URL for the API?">
+    All REST API requests go to:
+
+    ```
+    https://api.arena.gg
+    ```
+
+    WebSocket connections use:
+
+    ```
+    wss://api.arena.gg/ws/arena
+    ```
+  </Accordion>
+
+  <Accordion title="How long do access tokens last?">
+    Access tokens expire after **15 minutes**. When your token expires, call:
+
+    ```
+    POST /api/auth/refresh
+    ```
+
+    with your `refreshToken` in the request body to receive a new `accessToken` and a new `refreshToken`. Refresh tokens are single-use — always replace your stored refresh token with the one returned in the response.
+  </Accordion>
+
+  <Accordion title="Is there an OpenAPI/Swagger spec available?">
+    Check with your platform operator. The Arena Backend API follows RESTful conventions and is fully documented in this reference. Your operator may provide a generated OpenAPI spec or a Postman collection for your specific deployment.
+  </Accordion>
+
+  <Accordion title="How do I subscribe to real-time events?">
+    Connect via WebSocket/STOMP to `wss://api.arena.gg/ws/arena` and subscribe to the relevant topics:
+
+    | Topic | Events |
+    |---|---|
+    | `/topic/games/{roomId}` | Game state changes for a specific room |
+    | `/user/queue/notifications` | Personal wallet, KYC, and complaint updates |
+    | `/topic/supervision/{roomId}` | Supervisor actions (SUPERVISOR role only) |
+
+    See the [WebSocket Connection Guide](/realtime/websocket) for a full setup example including authentication and reconnection handling.
+  </Accordion>
+</AccordionGroup>
